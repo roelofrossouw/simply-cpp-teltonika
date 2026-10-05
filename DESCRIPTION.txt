@@ -1,0 +1,1 @@
+C++20 Teltonika AVL codec parser
