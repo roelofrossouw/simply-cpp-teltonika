@@ -10,7 +10,6 @@ message(STATUS "SimplyCPP ${SC_MODULE} Version: ${SC_VERSION}")
 
 find_or_install_package(sc-core simply-cpp-dev simply-cpp)
 find_or_install_package(nlohmann_json nlohmann-json3-dev nlohmann-json)
-find_or_install_package(absl libabsl-dev abseil)
 
 set(SOURCE_OBJECTS)
 set(SOURCE_LIBRARIES)

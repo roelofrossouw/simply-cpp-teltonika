@@ -1,5 +1,6 @@
 #include "Teltonika.h"
 #include "AVLType.h"
+#include "byte_order.h"
 
 #include <algorithm>
 #include <iomanip>
@@ -9,7 +10,6 @@
 #include <ctime>
 #include <cstring>
 #include <random>
-#include <absl/numeric/bits.h>
 #include <nlohmann/json.hpp>
 #include "base64.h"
 #include "utf8.h"
@@ -64,7 +64,7 @@ Teltonika::Teltonika(const string& input) : parser(input, Endian::Big)
 
         uint32_t read_crc = 0;
         std::memcpy(&read_crc, crc_string.data(), sizeof(read_crc));
-        read_crc = absl::byteswap(read_crc);
+        read_crc = sc::teltonika::byteswap(read_crc);
 
         parser.skip(4); // Preamble...
         const uint32_t data_length = parser.readUInt32();

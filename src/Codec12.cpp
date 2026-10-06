@@ -3,8 +3,8 @@
 //
 
 #include "Codec12.h"
+#include "byte_order.h"
 
-#include <absl/numeric/bits.h>
 #include <iomanip>
 #include <iostream>
 #include <vector>
@@ -16,7 +16,7 @@ Codec12::Codec12(const string &command) : command_(command) {
     stream.write(reinterpret_cast<char *>(&num), sizeof(num));
 
     num = command.size() + 8;
-    num = absl::byteswap(num);
+    num = sc::teltonika::byteswap(num);
     stream.write(reinterpret_cast<char *>(&num), sizeof(num));
 
     uint8_t byte = 12;
@@ -29,7 +29,7 @@ Codec12::Codec12(const string &command) : command_(command) {
     stream.write(reinterpret_cast<char *>(&byte), sizeof(byte));
 
     num = command.size();
-    num = absl::byteswap(num);
+    num = sc::teltonika::byteswap(num);
     stream.write(reinterpret_cast<char *>(&num), sizeof(num));
 
     stream << command;
@@ -38,7 +38,7 @@ Codec12::Codec12(const string &command) : command_(command) {
     stream.write(reinterpret_cast<char *>(&byte), sizeof(byte));
 
     num = CalcCRC(stream.str().substr(8));
-    num = absl::byteswap(num);
+    num = sc::teltonika::byteswap(num);
     stream.write(reinterpret_cast<char *>(&num), 4);
 }
 

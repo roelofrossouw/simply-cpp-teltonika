@@ -3,11 +3,11 @@
 //
 
 #include "BinaryParser.h"
+#include "byte_order.h"
 
 #include <sstream>
 #include <cstring>
 #include <algorithm>
-#include <absl/numeric/bits.h>
 
 using namespace std;
 
@@ -138,6 +138,6 @@ T BinaryParser::readPrimitive() {
 
 template<typename T>
 T BinaryParser::adjustEndian(T value) {
-    if (endian_ == Endian::Big) value = absl::byteswap(value);
+    if (endian_ == Endian::Big) value = sc::teltonika::byteswap(value);
     return value;
 }
