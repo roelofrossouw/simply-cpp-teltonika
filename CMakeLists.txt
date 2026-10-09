@@ -8,7 +8,7 @@ option(SC_TELTONIKA_BUILD_TESTS "Build simply-cpp-teltonika tests" ${PROJECT_IS_
 get_sc_version()
 message(STATUS "SimplyCPP ${SC_MODULE} Version: ${SC_VERSION}")
 
-find_or_install_package(sc-core simply-cpp-dev simply-cpp)
+find_or_install_package(sc-core simply-cpp-dev simply-cpp 1.5.21)
 find_or_install_package(nlohmann_json nlohmann-json3-dev nlohmann-json)
 
 set(SOURCE_OBJECTS)
@@ -35,5 +35,5 @@ if (SC_TELTONIKA_BUILD_TESTS)
 endif ()
 
 package_sc_module(
-        DEPENDS simply-cpp
-        DEV_DEPENDS simply-cpp-dev nlohmann-json3-dev)
+        DEPENDS "simply-cpp (>= 1.5.21~)"
+        DEV_DEPENDS "simply-cpp-dev (>= 1.5.21~)" nlohmann-json3-dev)
