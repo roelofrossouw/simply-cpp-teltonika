@@ -12,6 +12,7 @@
 #include <istream>
 #include <sstream>
 #include <bit>
+#include <utility>
 
 enum class Endian {
     Little,
@@ -28,6 +29,13 @@ public:
     explicit BinaryParser(const std::string &input, Endian endian = Endian::Little);
 
     ~BinaryParser();
+
+    // A parser can be moved (it keeps reading where it was) but not copied: two parsers can't
+    // share one read position, and a copy would free the string's stream twice.
+    BinaryParser(const BinaryParser &) = delete;
+    BinaryParser &operator=(const BinaryParser &) = delete;
+    BinaryParser(BinaryParser &&other) noexcept;
+    BinaryParser &operator=(BinaryParser &&) = delete; // it holds a reference to its stream
 
     // Core API: read primitive types
     uint8_t readUInt8();

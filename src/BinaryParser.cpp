@@ -8,6 +8,7 @@
 #include <sstream>
 #include <cstring>
 #include <algorithm>
+#include <utility>
 
 using namespace std;
 
@@ -17,6 +18,12 @@ BinaryParser::BinaryParser(istream &input, Endian endian) : stream_(input), curr
 BinaryParser::BinaryParser(const string &input, Endian endian) : stringStream_(new stringstream(input)),
                                                                  stream_(*stringStream_), currentPos_(0),
                                                                  endian_(endian) {
+}
+
+// The string's stream is on the heap, so stream_ still refers to it once it changes owner.
+BinaryParser::BinaryParser(BinaryParser &&other) noexcept
+    : stringStream_(std::exchange(other.stringStream_, nullptr)), stream_(other.stream_),
+      currentPos_(other.currentPos_), endian_(other.endian_) {
 }
 
 BinaryParser::~BinaryParser() {
