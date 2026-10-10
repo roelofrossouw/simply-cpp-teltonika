@@ -4,6 +4,8 @@
 #include <sc_test.h>
 
 #include <string>
+#include <type_traits>
+#include <utility>
 
 int main() {
     SECTION("Binary parser reads big-endian values");
@@ -33,6 +35,26 @@ int main() {
     corrupt.back() ^= 1;
     Teltonika invalid{corrupt};
     CHECK_EQ(invalid.IsValid(), false);
+
+    SECTION("Parsers and messages move but don't copy");
+    {
+        // A copy would free the string's stream twice.
+        static_assert(!std::is_copy_constructible_v<BinaryParser>);
+        static_assert(!std::is_copy_constructible_v<Teltonika>);
+        static_assert(std::is_nothrow_move_constructible_v<BinaryParser>);
+        static_assert(std::is_move_constructible_v<Teltonika>);
+
+        BinaryParser first{bytes, Endian::Big};
+        CHECK_EQ(first.readUInt16(), 0x1234);
+        BinaryParser moved{std::move(first)};
+        CHECK_EQ(moved.position(), 2);           // carries on where it was
+        CHECK_EQ(moved.readUInt16(), 0x5678);
+
+        Teltonika original{frame};
+        Teltonika taken{std::move(original)};
+        CHECK_EQ(taken.IsValid(), true);
+        CHECK_EQ(taken.Items(), 1);
+    }
 
     TEST_SUMMARY();
 }
