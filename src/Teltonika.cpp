@@ -163,8 +163,8 @@ void Teltonika::Codec12()
 
 timepoint Teltonika::TimeStamp()
 {
-    auto tp = chrono::system_clock::from_time_t(static_cast<long>(parser.readUInt64()) / 1000);
-    return tp;
+    // Milliseconds since the epoch.
+    return timepoint{chrono::duration_cast<timepoint::duration>(chrono::milliseconds{parser.readUInt64()})};
 }
 
 int Teltonika::ReadGPSData()
@@ -177,6 +177,7 @@ int Teltonika::ReadGPSData()
     ang = parser.readUInt16();
     sat = parser.readUInt8();
     speed = parser.readUInt16();
+    positions.push_back({timestamp, lat, lng, alt, ang, sat, speed});
     return priority;
 }
 
