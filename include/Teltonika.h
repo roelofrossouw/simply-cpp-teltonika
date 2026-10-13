@@ -1,5 +1,6 @@
 #pragma once
 #include "BinaryParser.h"
+#include <memory>
 #include <chrono>
 #include <vector>
 #include <unordered_map>
@@ -32,10 +33,17 @@ class Teltonika
 public:
     explicit Teltonika(const std::string& input);
     explicit Teltonika(const std::vector<std::uint8_t>& input);
+    ~Teltonika();
 
-    [[nodiscard]] bool IsValid() const { return valid_; }
+    // A parsed frame can be moved but not copied.
+    Teltonika(const Teltonika&) = delete;
+    Teltonika& operator=(const Teltonika&) = delete;
+    Teltonika(Teltonika&&) noexcept;
+    Teltonika& operator=(Teltonika&&) noexcept;
 
-    [[nodiscard]] uint8_t Items() const { return items; }
+    [[nodiscard]] bool IsValid() const;
+
+    [[nodiscard]] uint8_t Items() const;
 
     [[nodiscard]] std::string CRC() const;
 
@@ -44,41 +52,15 @@ public:
     static std::string Hex(const std::string& s);
 
     [[nodiscard]] nlohmann::ordered_json GPSInfo() const;
-    [[nodiscard]] std::vector<avl_record>& AVLData() { return avl_data; }
+    [[nodiscard]] std::vector<avl_record>& AVLData();
 
     // Every record's position, in the order they were in the frame (devices send their oldest
     // first, but buffered records can make that vary: compare the times). GPSInfo() is the last.
-    [[nodiscard]] const std::vector<avl_position>& Positions() const { return positions; }
+    [[nodiscard]] const std::vector<avl_position>& Positions() const;
 
 private:
-    BinaryParser parser;
-    std::string crc_string;
-    std::string crc_zeroes{'\0', '\0', '\0', '\0'};
-    bool valid_ = false;
-    uint8_t items = 0;
-    timepoint timestamp{};
-    double lng = 0;
-    double lat = 0;
-    int alt = 0;
-    int ang = 0;
-    int sat = 0;
-    int speed = 0;
-    std::vector<avl_record> avl_data{};
-    std::vector<avl_position> positions{};
-
-    void ParseCodec();
-
-    void Codec8e();
-
-    void Codec12();
-
-    timepoint TimeStamp();
-
-    int ReadGPSData();
-
-    avl_record ReadAVLData(int priority);
-
-    static uint32_t CalcCRC(const std::string& data);
-
-    static void DumpFile(const std::string& input);
+    // Everything else lives here, so the class stays one pointer in size whatever is added: a
+    // program built against one version keeps working with the next.
+    class implementation;
+    std::unique_ptr<implementation> impl_;
 };

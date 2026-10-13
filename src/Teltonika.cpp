@@ -31,7 +31,37 @@ namespace {
     }
 }
 
-void Teltonika::DumpFile(const std::string& input)
+class Teltonika::implementation
+{
+public:
+    explicit implementation(const std::string& input);
+
+    BinaryParser parser;
+    std::string crc_string;
+    std::string crc_zeroes{'\0', '\0', '\0', '\0'};
+    bool valid_ = false;
+    uint8_t items = 0;
+    timepoint timestamp{};
+    double lng = 0;
+    double lat = 0;
+    int alt = 0;
+    int ang = 0;
+    int sat = 0;
+    int speed = 0;
+    std::vector<avl_record> avl_data{};
+    std::vector<avl_position> positions{};
+
+    void ParseCodec();
+    void Codec8e();
+    void Codec12();
+    timepoint TimeStamp();
+    int ReadGPSData();
+    avl_record ReadAVLData(int priority);
+    static uint32_t CalcCRC(const std::string& data);
+    static void DumpFile(const std::string& input);
+};
+
+void Teltonika::implementation::DumpFile(const std::string& input)
 {
     // Generate a random filename
     std::random_device rd;
@@ -54,7 +84,7 @@ void Teltonika::DumpFile(const std::string& input)
     outfile.close();
 }
 
-Teltonika::Teltonika(const string& input) : parser(input, Endian::Big)
+Teltonika::implementation::implementation(const string& input) : parser(input, Endian::Big)
 {
     try
     {
@@ -91,9 +121,37 @@ Teltonika::Teltonika(const std::vector<std::uint8_t>& input) :
 {
 }
 
+Teltonika::Teltonika(const string& input) : impl_(make_unique<implementation>(input))
+{
+}
+
+Teltonika::~Teltonika() = default;
+Teltonika::Teltonika(Teltonika&&) noexcept = default;
+Teltonika& Teltonika::operator=(Teltonika&&) noexcept = default;
+
+bool Teltonika::IsValid() const
+{
+    return impl_->valid_;
+}
+
+uint8_t Teltonika::Items() const
+{
+    return impl_->items;
+}
+
+std::vector<avl_record>& Teltonika::AVLData()
+{
+    return impl_->avl_data;
+}
+
+const std::vector<avl_position>& Teltonika::Positions() const
+{
+    return impl_->positions;
+}
+
 std::string Teltonika::CRC() const
 {
-    return valid_ ? crc_string : crc_zeroes;
+    return impl_->valid_ ? impl_->crc_string : impl_->crc_zeroes;
 }
 
 std::string Teltonika::Show(const std::string& s)
@@ -113,7 +171,7 @@ std::string Teltonika::Show(const std::string& s)
 }
 
 
-void Teltonika::ParseCodec()
+void Teltonika::implementation::ParseCodec()
 {
     int codec = parser.readUInt8();
     if (codec == 12)
@@ -130,7 +188,7 @@ void Teltonika::ParseCodec()
 }
 
 
-void Teltonika::Codec8e()
+void Teltonika::implementation::Codec8e()
 {
     uint8_t items1 = parser.readUInt8();
     for (int i = 0; i < items1; i++)
@@ -142,7 +200,7 @@ void Teltonika::Codec8e()
     items = (items1 == items2) ? items1 : 0; // Item count must match.
 }
 
-void Teltonika::Codec12()
+void Teltonika::implementation::Codec12()
 {
     uint8_t items1 = parser.readUInt8();
     uint8_t type;
@@ -161,13 +219,13 @@ void Teltonika::Codec12()
 }
 
 
-timepoint Teltonika::TimeStamp()
+timepoint Teltonika::implementation::TimeStamp()
 {
     // Milliseconds since the epoch.
     return timepoint{chrono::duration_cast<timepoint::duration>(chrono::milliseconds{parser.readUInt64()})};
 }
 
-int Teltonika::ReadGPSData()
+int Teltonika::implementation::ReadGPSData()
 {
     timestamp = TimeStamp();
     const int priority = parser.readUInt8();
@@ -181,7 +239,7 @@ int Teltonika::ReadGPSData()
     return priority;
 }
 
-avl_record Teltonika::ReadAVLData(int priority)
+avl_record Teltonika::implementation::ReadAVLData(int priority)
 {
     avl_record data{};
     int evtio = parser.readUInt16();
@@ -214,7 +272,7 @@ avl_record Teltonika::ReadAVLData(int priority)
     return data;
 }
 
-uint32_t Teltonika::CalcCRC(const string& data)
+uint32_t Teltonika::implementation::CalcCRC(const string& data)
 {
     uint32_t crc = 0;
     for (uint8_t byte : data)
@@ -243,14 +301,15 @@ string Teltonika::Hex(const string& s)
 
 nlohmann::ordered_json Teltonika::GPSInfo() const
 {
-    if (lat == 0) return {};
+    const auto& d = *impl_;
+    if (d.lat == 0) return {};
     return {
-        {"gpstime", format_timestamp(timestamp)},
-        {"lat", lat},
-        {"lng", lng},
-        {"alt", alt},
-        {"ang", ang},
-        {"sat", sat},
-        {"speed", speed}
+        {"gpstime", format_timestamp(d.timestamp)},
+        {"lat", d.lat},
+        {"lng", d.lng},
+        {"alt", d.alt},
+        {"ang", d.ang},
+        {"sat", d.sat},
+        {"speed", d.speed}
     };
 }

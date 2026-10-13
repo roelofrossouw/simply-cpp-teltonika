@@ -7,11 +7,20 @@
 
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <vector>
 
 using namespace std;
 
-Codec12::Codec12(const string &command) : command_(command) {
+class Codec12::implementation {
+public:
+    string command;
+    stringstream stream;
+};
+
+Codec12::Codec12(const string &command) : impl_(make_unique<implementation>()) {
+    impl_->command = command;
+    auto &stream = impl_->stream;
     uint32_t num = 0;
     stream.write(reinterpret_cast<char *>(&num), sizeof(num));
 
@@ -57,14 +66,18 @@ uint32_t Codec12::CalcCRC(const string &data) {
     return crc;
 }
 
+Codec12::~Codec12() = default;
+Codec12::Codec12(Codec12 &&) noexcept = default;
+Codec12 &Codec12::operator=(Codec12 &&) noexcept = default;
+
 std::string Codec12::Data() const {
-    return stream.str();
+    return impl_->stream.str();
 }
 
 ostream &operator<<(ostream &lhs, const Codec12 &c12) {
     stringstream ss;
     ss << hex << uppercase;
-    for (uint8_t let: c12.stream.str())
+    for (uint8_t let: c12.impl_->stream.str())
         ss << setw(2) << setfill('0') << static_cast<int>(let);
     lhs << ss.str();
     return lhs;

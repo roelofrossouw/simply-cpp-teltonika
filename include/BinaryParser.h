@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <string>
 #include <istream>
+#include <memory>
 #include <sstream>
 #include <bit>
 #include <utility>
@@ -31,11 +32,11 @@ public:
     ~BinaryParser();
 
     // A parser can be moved (it keeps reading where it was) but not copied: two parsers can't
-    // share one read position, and a copy would free the string's stream twice.
+    // share one read position.
     BinaryParser(const BinaryParser &) = delete;
     BinaryParser &operator=(const BinaryParser &) = delete;
     BinaryParser(BinaryParser &&other) noexcept;
-    BinaryParser &operator=(BinaryParser &&) = delete; // it holds a reference to its stream
+    BinaryParser &operator=(BinaryParser &&other) noexcept;
 
     // Core API: read primitive types
     uint8_t readUInt8();
@@ -74,19 +75,13 @@ public:
 
     void skip(std::size_t count);
 
-    void setEndian(Endian endian) { endian_ = endian; }
+    void setEndian(Endian endian);
 
 private:
-    std::stringstream *stringStream_ = nullptr;
-    std::istream &stream_;
-    std::size_t currentPos_;
-    Endian endian_;
-
-    template<typename T>
-    T readPrimitive();
-
-    template<class T>
-    T adjustEndian(T value);
+    // Everything else lives here, so the class stays one pointer in size whatever is added: a
+    // program built against one version keeps working with the next.
+    class implementation;
+    std::unique_ptr<implementation> impl_;
 };
 
 

@@ -34,6 +34,10 @@ if (SC_TELTONIKA_BUILD_TESTS)
     add_subdirectory(tests sc-teltonika-test)
 endif ()
 
+# 2.0.0 changed the classes' layout (each is now one pointer to a hidden implementation), so a
+# program built against 1.x would corrupt memory with this library: apt has to upgrade those
+# together with it. 1.0.29 is the first streamvms built against 2.0.
+set(CPACK_DEBIAN_RUNTIME_PACKAGE_BREAKS "streamvms (<< 1.0.29~)")
 package_sc_module(
         DEPENDS "simply-cpp (>= 1.5.21~)"
         DEV_DEPENDS "simply-cpp-dev (>= 1.5.21~)" nlohmann-json3-dev)

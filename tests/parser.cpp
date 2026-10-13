@@ -91,7 +91,12 @@ int main() {
         static_assert(!std::is_copy_constructible_v<BinaryParser>);
         static_assert(!std::is_copy_constructible_v<Teltonika>);
         static_assert(std::is_nothrow_move_constructible_v<BinaryParser>);
-        static_assert(std::is_move_constructible_v<Teltonika>);
+        static_assert(std::is_nothrow_move_constructible_v<Teltonika>);
+        static_assert(std::is_nothrow_move_assignable_v<Teltonika>);
+        // One pointer each: what they hold can change without breaking programs built earlier.
+        static_assert(sizeof(Teltonika) == sizeof(void *));
+        static_assert(sizeof(BinaryParser) == sizeof(void *));
+        static_assert(sizeof(Codec12) == sizeof(void *));
 
         BinaryParser first{bytes, Endian::Big};
         CHECK_EQ(first.readUInt16(), 0x1234);
