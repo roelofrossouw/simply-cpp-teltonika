@@ -12,55 +12,83 @@
 
 using namespace std;
 
-BinaryParser::BinaryParser(istream &input, Endian endian) : stream_(input), currentPos_(0), endian_(endian) {
+class BinaryParser::implementation {
+public:
+    implementation(istream &input, const Endian endian) : stream(input), endian(endian) {
+    }
+
+    implementation(const string &input, const Endian endian)
+        : owned(make_unique<stringstream>(input)), stream(*owned), endian(endian) {
+    }
+
+    unique_ptr<stringstream> owned; // the string constructor's stream
+    istream &stream;
+    size_t position = 0;
+    Endian endian;
+
+    template<typename T>
+    T read() {
+        T value;
+        if (!stream.read(reinterpret_cast<char *>(&value), sizeof(T))) {
+            throw runtime_error("Unexpected EOF while reading primitive");
+        }
+        position += sizeof(T);
+        return value;
+    }
+
+    template<typename T>
+    T read_ordered() {
+        T value = read<T>();
+        if (endian == Endian::Big) value = sc::teltonika::byteswap(value);
+        return value;
+    }
+};
+
+BinaryParser::BinaryParser(istream &input, Endian endian) : impl_(make_unique<implementation>(input, endian)) {
 }
 
-BinaryParser::BinaryParser(const string &input, Endian endian) : stringStream_(new stringstream(input)),
-                                                                 stream_(*stringStream_), currentPos_(0),
-                                                                 endian_(endian) {
+BinaryParser::BinaryParser(const string &input, Endian endian) : impl_(make_unique<implementation>(input, endian)) {
 }
 
-// The string's stream is on the heap, so stream_ still refers to it once it changes owner.
-BinaryParser::BinaryParser(BinaryParser &&other) noexcept
-    : stringStream_(std::exchange(other.stringStream_, nullptr)), stream_(other.stream_),
-      currentPos_(other.currentPos_), endian_(other.endian_) {
-}
+// The implementation stays where it is, so its stream reference stays good after a move.
+BinaryParser::BinaryParser(BinaryParser &&other) noexcept = default;
+BinaryParser &BinaryParser::operator=(BinaryParser &&other) noexcept = default;
+BinaryParser::~BinaryParser() = default;
 
-BinaryParser::~BinaryParser() {
-    delete stringStream_;
+void BinaryParser::setEndian(const Endian endian) {
+    impl_->endian = endian;
 }
 
 uint8_t BinaryParser::readUInt8() {
-    return readPrimitive<uint8_t>();
+    return impl_->read<uint8_t>();
 }
 
 uint16_t BinaryParser::readUInt16() {
-    return adjustEndian(readPrimitive<uint16_t>());
+    return impl_->read_ordered<uint16_t>();
 }
 
 uint32_t BinaryParser::readUInt32() {
-    return adjustEndian(readPrimitive<uint32_t>());
+    return impl_->read_ordered<uint32_t>();
 }
 
 uint64_t BinaryParser::readUInt64() {
-    return adjustEndian(readPrimitive<uint64_t>());
+    return impl_->read_ordered<uint64_t>();
 }
 
-
 int8_t BinaryParser::readInt8() {
-    return readPrimitive<int8_t>();
+    return impl_->read<int8_t>();
 }
 
 int16_t BinaryParser::readInt16() {
-    return adjustEndian(readPrimitive<int16_t>());
+    return impl_->read_ordered<int16_t>();
 }
 
 int32_t BinaryParser::readInt32() {
-    return adjustEndian(readPrimitive<int32_t>());
+    return impl_->read_ordered<int32_t>();
 }
 
 int64_t BinaryParser::readInt64() {
-    return adjustEndian(readPrimitive<int64_t>());
+    return impl_->read_ordered<int64_t>();
 }
 
 double BinaryParser::readNumber(int bytes, bool is_signed) {
@@ -80,18 +108,17 @@ double BinaryParser::readNumber(int bytes, bool is_signed) {
         case 8: return readUInt64();
         default: return 0;
     }
-    return 0;
 }
 
 float BinaryParser::readFloat() {
-    uint32_t raw = adjustEndian(readPrimitive<uint32_t>());
+    const uint32_t raw = impl_->read_ordered<uint32_t>();
     float value;
     memcpy(&value, &raw, sizeof(value));
     return value;
 }
 
 double BinaryParser::readDouble() {
-    uint64_t raw = adjustEndian(readPrimitive<uint64_t>());
+    const uint64_t raw = impl_->read_ordered<uint64_t>();
     double value;
     memcpy(&value, &raw, sizeof(value));
     return value;
@@ -104,47 +131,30 @@ string BinaryParser::readString(size_t length) {
 
 vector<uint8_t> BinaryParser::readBytes(const size_t count) {
     vector<uint8_t> buffer(count);
-    if (!stream_.read(reinterpret_cast<char *>(buffer.data()), count)) {
+    if (!impl_->stream.read(reinterpret_cast<char *>(buffer.data()), count)) {
         throw runtime_error("Unexpected EOF while reading bytes");
     }
-    currentPos_ += count;
+    impl_->position += count;
     return buffer;
 }
 
 int BinaryParser::position() const {
-    return static_cast<int>(currentPos_);
+    return static_cast<int>(impl_->position);
 }
 
 void BinaryParser::seek(const size_t pos) {
-    stream_.clear();
-    stream_.seekg(pos, ios::beg);
-    if (!stream_) throw runtime_error("Seek failed");
-    currentPos_ = pos;
+    impl_->stream.clear();
+    impl_->stream.seekg(pos, ios::beg);
+    if (!impl_->stream) throw runtime_error("Seek failed");
+    impl_->position = pos;
 }
 
 void BinaryParser::skip(size_t count) {
-    seek(currentPos_ + count);
+    seek(impl_->position + count);
 }
-
 
 template<typename T>
 T BinaryParser::parseStruct() {
     T result;
     return result;
-}
-
-template<typename T>
-T BinaryParser::readPrimitive() {
-    T value;
-    if (!stream_.read(reinterpret_cast<char *>(&value), sizeof(T))) {
-        throw runtime_error("Unexpected EOF while reading primitive");
-    }
-    currentPos_ += sizeof(T);
-    return value;
-}
-
-template<typename T>
-T BinaryParser::adjustEndian(T value) {
-    if (endian_ == Endian::Big) value = sc::teltonika::byteswap(value);
-    return value;
 }
