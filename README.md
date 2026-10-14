@@ -19,6 +19,9 @@ target_link_libraries(myapp PRIVATE sc::sc-teltonika-shared)
 Teltonika message{frame};
 if (message.IsValid()) {
     const auto gps = message.GPSInfo();
-    const auto& records = message.AVLData();
+    for (const auto& record : message.AVLData()) {
+        const auto fuel_rate = record.find(110); // AVL ID -> value with its unit, e.g. "4.5l/h"
+        const auto by_name = avl_names(record);  // {"Fuel Rate": "4.5l/h", ...}
+    }
 }
 ```
