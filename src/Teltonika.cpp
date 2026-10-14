@@ -139,6 +139,13 @@ uint8_t Teltonika::Items() const
     return impl_->items;
 }
 
+nlohmann::ordered_json avl_names(const avl_record& record)
+{
+    auto named = nlohmann::ordered_json::object();
+    for (const auto& [io, value] : record) named[std::string(avlTypes::get(io).name)] = value;
+    return named;
+}
+
 std::vector<avl_record>& Teltonika::AVLData()
 {
     return impl_->avl_data;
@@ -264,7 +271,7 @@ avl_record Teltonika::implementation::ReadAVLData(int priority)
                          // 385 -> BLE Beacon data
                          val = sc::base64::encode(val);
                      }
-                     data[type] = val;
+                     data[static_cast<std::uint16_t>(io)] = val;
                  }
              }
 

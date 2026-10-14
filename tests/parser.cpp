@@ -9,6 +9,7 @@
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace {
     // Big-endian, as Teltonika sends it.
@@ -23,9 +24,11 @@ namespace {
         std::uint16_t alt, ang;
         std::uint8_t sat;
         std::uint16_t speed;
+        std::vector<std::pair<std::uint16_t, std::uint16_t>> two_byte{};  // IO ID and value
+        std::vector<std::pair<std::uint16_t, std::uint32_t>> four_byte{};
     };
 
-    // A Codec 8 Extended frame holding records, without IO values.
+    // A Codec 8 Extended frame holding records and their 2- and 4-byte IO values.
     std::string codec8e_frame(const std::vector<record> &records) {
         std::string data;
         put<std::uint8_t>(data, 0x8E);
@@ -39,7 +42,20 @@ namespace {
             put(data, r.ang);
             put(data, r.sat);
             put(data, r.speed);
-            for (int i = 0; i < 7; ++i) put<std::uint16_t>(data, 0); // event IO, total, and no 1/2/4/8/X-byte values
+            put<std::uint16_t>(data, 0); // event IO
+            put<std::uint16_t>(data, r.two_byte.size() + r.four_byte.size());
+            put<std::uint16_t>(data, 0); // no 1-byte values
+            put<std::uint16_t>(data, r.two_byte.size());
+            for (const auto &[id, value]: r.two_byte) {
+                put(data, id);
+                put(data, value);
+            }
+            put<std::uint16_t>(data, r.four_byte.size());
+            for (const auto &[id, value]: r.four_byte) {
+                put(data, id);
+                put(data, value);
+            }
+            for (int i = 0; i < 2; ++i) put<std::uint16_t>(data, 0); // no 8 or X-byte values
         }
         put<std::uint8_t>(data, records.size());
 
@@ -133,6 +149,31 @@ int main() {
         }
         // GPSInfo() is still the last record in the frame.
         CHECK_EQ(avl.GPSInfo()["sat"].get<int>(), 0);
+    }
+
+    SECTION("IO values by AVL ID, so IDs sharing a name stay apart");
+    {
+        Teltonika avl{codec8e_frame({
+            {1'760'000'000'000, 281200000, -259800000, 1490, 85, 9, 0,
+             {{60, 450}, {110, 45}}, {{83, 12345}, {107, 2500}}},
+        })};
+        CHECK(avl.IsValid());
+        const auto &records = avl.AVLData();
+        CHECK_EQ(records.size(), std::size_t{1});
+        if (records.size() == 1) {
+            const auto &record = records[0];
+            CHECK_EQ(record.at(60), std::string{"4.50L/h"});   // "Fuel Rate", 0.01 L/h
+            CHECK_EQ(record.at(110), std::string{"4.5l/h"});   // "Fuel Rate" too, 0.1 l/h
+            CHECK_EQ(record.at(83), std::string{"1234.5l"});   // "Fuel Consumed"
+            CHECK_EQ(record.at(107), std::string{"250.0l"});   // "Fuel Consumed (counted)"
+            CHECK(!record.contains(84));
+
+            const auto named = avl_names(record); // the name-keyed form: the higher ID wins a shared name
+            CHECK_EQ(named.size(), std::size_t{3});
+            CHECK_EQ(named["Fuel Rate"].get<std::string>(), std::string{"4.5l/h"});
+            CHECK_EQ(named["Fuel Consumed"].get<std::string>(), std::string{"1234.5l"});
+            CHECK_EQ(named["Fuel Consumed (counted)"].get<std::string>(), std::string{"250.0l"});
+        }
     }
 
     TEST_SUMMARY();
