@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 set(SC_MODULE teltonika)
-project(simply-cpp-${SC_MODULE} LANGUAGES CXX)
+project(simply-cpp-${SC_MODULE} HOMEPAGE_URL "https://github.com/roelofrossouw/simply-cpp-teltonika" LANGUAGES CXX)
 include(cmake/sc_bootstrap.cmake)
 
 option(SC_TELTONIKA_BUILD_TESTS "Build simply-cpp-teltonika tests" ${PROJECT_IS_TOP_LEVEL})
@@ -8,7 +8,7 @@ option(SC_TELTONIKA_BUILD_TESTS "Build simply-cpp-teltonika tests" ${PROJECT_IS_
 get_sc_version()
 message(STATUS "SimplyCPP ${SC_MODULE} Version: ${SC_VERSION}")
 
-find_or_install_package(sc-core simply-cpp-dev simply-cpp 1.5.21)
+find_or_install_package(sc-core simply-cpp-dev simply-cpp 1.7.0)
 find_or_install_package(nlohmann_json nlohmann-json3-dev nlohmann-json)
 
 set(SOURCE_OBJECTS)
@@ -39,5 +39,5 @@ endif ()
 # together with it. 1.0.29 is the first streamvms built against 2.0.
 set(CPACK_DEBIAN_RUNTIME_PACKAGE_BREAKS "streamvms (<< 1.0.29~)")
 package_sc_module(
-        DEPENDS "simply-cpp (>= 1.5.21~)"
-        DEV_DEPENDS "simply-cpp-dev (>= 1.5.21~)" nlohmann-json3-dev)
+        DEPENDS "simply-cpp (>= 1.7.0~)"
+        DEV_DEPENDS "simply-cpp-dev (>= 1.7.0~)" nlohmann-json3-dev)
