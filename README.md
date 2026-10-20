@@ -25,3 +25,7 @@ if (message.IsValid()) {
     }
 }
 ```
+
+Frames that can't be read (a wrong length, an unknown codec, a read past the end) are reported
+on stderr as warnings, written at `sc::log_level::warning` (the default) and above:
+`sc::teltonika::log_level(sc::log_level::error)` keeps them quiet.

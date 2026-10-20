@@ -1,5 +1,6 @@
 #pragma once
 #include "BinaryParser.h"
+#include <log_level.h>
 #include <memory>
 #include <chrono>
 #include <cstdint>
@@ -36,6 +37,14 @@ enum DataType
     Data,
     Disconnect
 };
+
+namespace sc::teltonika {
+    // What Teltonika writes to stderr: frames it can't read (a wrong length, an unknown codec, a
+    // read past the end) are warnings, written at warning (the default) and above, so
+    // log_level(sc::log_level::error) keeps them quiet.
+    void log_level(sc::log_level level);
+    [[nodiscard]] sc::log_level log_level();
+}
 
 class Teltonika
 {

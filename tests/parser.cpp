@@ -101,6 +101,25 @@ int main() {
     Teltonika invalid{corrupt};
     CHECK_EQ(invalid.IsValid(), false);
 
+    SECTION("A frame it can't read is a warning: written at warning (the default), not at error");
+    {
+        auto too_long = frame;
+        too_long += "extra"; // its length no longer matches the one it states
+        std::ostringstream captured;
+        auto *const previous = std::cerr.rdbuf(captured.rdbuf());
+        CHECK(sc::teltonika::log_level() == sc::log_level::warning);
+        CHECK(!Teltonika{too_long}.IsValid());
+        const auto at_warning = captured.str();
+        captured.str("");
+        sc::teltonika::log_level(sc::log_level::error);
+        CHECK(!Teltonika{too_long}.IsValid());
+        const auto at_error = captured.str();
+        sc::teltonika::log_level(sc::log_level::warning);
+        std::cerr.rdbuf(previous);
+        CHECK(at_warning.find("Invalid data length") != std::string::npos);
+        CHECK(at_error.empty());
+    }
+
     SECTION("Parsers and messages move but don't copy");
     {
         // A copy would free the string's stream twice.
