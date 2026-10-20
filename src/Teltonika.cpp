@@ -3,6 +3,7 @@
 #include "byte_order.h"
 
 #include <algorithm>
+#include <atomic>
 #include <iomanip>
 #include <iostream>
 #include <filesystem>
@@ -16,6 +17,23 @@
 
 
 using namespace std;
+
+namespace {
+    std::atomic<int> current_level{static_cast<int>(sc::log_level::warning)};
+
+    // Whether a warning is written (see sc::teltonika::log_level()).
+    bool warnings() {
+        return current_level.load(std::memory_order_relaxed) >= static_cast<int>(sc::log_level::warning);
+    }
+}
+
+void sc::teltonika::log_level(const sc::log_level level) {
+    current_level.store(static_cast<int>(level), std::memory_order_relaxed);
+}
+
+sc::log_level sc::teltonika::log_level() {
+    return static_cast<sc::log_level>(current_level.load(std::memory_order_relaxed));
+}
 
 namespace {
     std::string format_timestamp(const timepoint timestamp)
@@ -100,7 +118,7 @@ Teltonika::implementation::implementation(const string& input) : parser(input, E
         const uint32_t data_length = parser.readUInt32();
         if (input.size() != data_length + 12)
         {
-            cerr << "Invalid data length: " << input.size() << " vs " << data_length << endl;
+            if (warnings()) cerr << "Invalid data length: " << input.size() << " vs " << data_length << endl;
             return;
         }
 
@@ -111,7 +129,7 @@ Teltonika::implementation::implementation(const string& input) : parser(input, E
     }
     catch (const std::exception& e)
     {
-        cerr << "Error reading Teltonika data: " << e.what() << endl;
+        if (warnings()) cerr << "Error reading Teltonika data: " << e.what() << endl;
         // DumpFile(input);
     }
 }
@@ -191,7 +209,7 @@ void Teltonika::implementation::ParseCodec()
         Codec8e();
         return;
     }
-    cerr << "Unknown Codec: " << (int)codec << endl;
+    if (warnings()) cerr << "Unknown Codec: " << (int)codec << endl;
 }
 
 
