@@ -65,10 +65,6 @@ public:
 
     [[nodiscard]] std::string CRC() const;
 
-    static std::string Show(const std::string& s);
-
-    static std::string Hex(const std::string& s);
-
     [[nodiscard]] nlohmann::ordered_json GPSInfo() const;
     [[nodiscard]] std::vector<avl_record>& AVLData();
 
