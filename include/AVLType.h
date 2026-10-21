@@ -26,13 +26,6 @@ struct avl
     friend std::ostream& operator<<(std::ostream& os, const avl& avl);
 };
 
-// constexpr std::array<avl_descriptor, 1149> lookup{
-//     {
-//         {"Digital Input 1", AVLType::Unsigned, 1, ""},
-//         {"Digital Input 2", AVLType::Unsigned, 1, ""}
-//     }
-// };
-
 struct avlTypes
 {
     static const std::unordered_map<int, const avl> types_;

@@ -58,24 +58,15 @@ public:
     double readNumber(int bytes, bool is_signed);
 
     // Read Complex types
-    float readFloat();
-
-    double readDouble();
-
     std::string readString(std::size_t length);
 
     std::vector<uint8_t> readBytes(std::size_t count);
-
-    template<typename T>
-    T parseStruct();
 
     int position() const;
 
     void seek(std::size_t pos);
 
     void skip(std::size_t count);
-
-    void setEndian(Endian endian);
 
 private:
     // Everything else lives here, so the class stays one pointer in size whatever is added: a

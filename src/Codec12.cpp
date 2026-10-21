@@ -8,18 +8,15 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
-#include <vector>
 
 using namespace std;
 
 class Codec12::implementation {
 public:
-    string command;
     stringstream stream;
 };
 
 Codec12::Codec12(const string &command) : impl_(make_unique<implementation>()) {
-    impl_->command = command;
     auto &stream = impl_->stream;
     uint32_t num = 0;
     stream.write(reinterpret_cast<char *>(&num), sizeof(num));
@@ -52,7 +49,6 @@ Codec12::Codec12(const string &command) : impl_(make_unique<implementation>()) {
 }
 
 uint32_t Codec12::CalcCRC(const string &data) {
-    vector<uint8_t> bytes(data.begin(), data.end());
     uint32_t crc = 0;
     for (uint8_t byte: data) {
         crc ^= byte;

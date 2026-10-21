@@ -1,16 +1,13 @@
 #include "Teltonika.h"
 #include "AVLType.h"
+#include "Codec12.h"
 #include "byte_order.h"
 
-#include <algorithm>
 #include <atomic>
 #include <iomanip>
 #include <iostream>
-#include <filesystem>
-#include <fstream>
 #include <ctime>
 #include <cstring>
-#include <random>
 #include <nlohmann/json.hpp>
 #include "base64.h"
 #include "utf8.h"
@@ -56,16 +53,8 @@ public:
 
     BinaryParser parser;
     std::string crc_string;
-    std::string crc_zeroes{'\0', '\0', '\0', '\0'};
     bool valid_ = false;
     uint8_t items = 0;
-    timepoint timestamp{};
-    double lng = 0;
-    double lat = 0;
-    int alt = 0;
-    int ang = 0;
-    int sat = 0;
-    int speed = 0;
     std::vector<avl_record> avl_data{};
     std::vector<avl_position> positions{};
 
@@ -73,34 +62,9 @@ public:
     void Codec8e();
     void Codec12();
     timepoint TimeStamp();
-    int ReadGPSData();
-    avl_record ReadAVLData(int priority);
-    static uint32_t CalcCRC(const std::string& data);
-    static void DumpFile(const std::string& input);
+    void ReadGPSData();
+    avl_record ReadAVLData();
 };
-
-void Teltonika::implementation::DumpFile(const std::string& input)
-{
-    // Generate a random filename
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<unsigned long long> dist;
-
-    std::string filename = "file_" + std::to_string(dist(gen)) + ".txt";
-
-    // Ensure uniqueness in current folder
-    std::filesystem::path filepath = std::filesystem::current_path() / filename;
-    while (std::filesystem::exists(filepath))
-    {
-        filename = "file_" + std::to_string(dist(gen)) + ".txt";
-        filepath = std::filesystem::current_path() / filename;
-    }
-
-    // Write string to file
-    std::ofstream outfile(filepath, std::ios::binary);
-    outfile << input;
-    outfile.close();
-}
 
 Teltonika::implementation::implementation(const string& input) : parser(input, Endian::Big)
 {
@@ -122,7 +86,7 @@ Teltonika::implementation::implementation(const string& input) : parser(input, E
             return;
         }
 
-        if (read_crc != CalcCRC(input.substr(8, input.size() - 12))) return;
+        if (read_crc != Codec12::CalcCRC(input.substr(8, input.size() - 12))) return;
 
         valid_ = true;
         ParseCodec();
@@ -130,7 +94,6 @@ Teltonika::implementation::implementation(const string& input) : parser(input, E
     catch (const std::exception& e)
     {
         if (warnings()) cerr << "Error reading Teltonika data: " << e.what() << endl;
-        // DumpFile(input);
     }
 }
 
@@ -176,25 +139,8 @@ const std::vector<avl_position>& Teltonika::Positions() const
 
 std::string Teltonika::CRC() const
 {
-    return impl_->valid_ ? impl_->crc_string : impl_->crc_zeroes;
+    return impl_->valid_ ? impl_->crc_string : std::string(4, '\0');
 }
-
-std::string Teltonika::Show(const std::string& s)
-{
-    stringstream ss;
-    ss << hex << uppercase << setfill('0');
-    for (uint8_t let : s)
-        if (isprint(static_cast<char>(let)))
-        {
-            ss << static_cast<char>(let);
-        }
-        else
-        {
-            ss << " x" << setw(2) << static_cast<int>(let) << " ";
-        }
-    return ss.str();
-}
-
 
 void Teltonika::implementation::ParseCodec()
 {
@@ -218,8 +164,8 @@ void Teltonika::implementation::Codec8e()
     uint8_t items1 = parser.readUInt8();
     for (int i = 0; i < items1; i++)
     {
-        auto priority = ReadGPSData();
-        avl_data.push_back(ReadAVLData(priority)); // Must be read to get to end and check crc.
+        ReadGPSData();
+        avl_data.push_back(ReadAVLData()); // Must be read to get to end and check crc.
     }
     uint8_t items2 = parser.readUInt8();
     items = (items1 == items2) ? items1 : 0; // Item count must match.
@@ -228,16 +174,10 @@ void Teltonika::implementation::Codec8e()
 void Teltonika::implementation::Codec12()
 {
     uint8_t items1 = parser.readUInt8();
-    uint8_t type;
-    uint32_t size;
-    string command;
     for (int i = 0; i < items1; i++)
     {
-        type = parser.readUInt8();
-        // cout << "Command type " << type << endl;
-        size = parser.readUInt32();
-        command = parser.readString(size);
-        // cout << "Got command " << command << endl;
+        parser.readUInt8(); // type
+        parser.readString(parser.readUInt32());
     }
     uint8_t items2 = parser.readUInt8();
     items = (items1 == items2) ? items1 : 0; // Item count must match...
@@ -250,86 +190,54 @@ timepoint Teltonika::implementation::TimeStamp()
     return timepoint{chrono::duration_cast<timepoint::duration>(chrono::milliseconds{parser.readUInt64()})};
 }
 
-int Teltonika::implementation::ReadGPSData()
+void Teltonika::implementation::ReadGPSData()
 {
-    timestamp = TimeStamp();
-    const int priority = parser.readUInt8();
-    lng = parser.readInt32() / 10000000.0;
-    lat = parser.readInt32() / 10000000.0;
-    alt = parser.readUInt16();
-    ang = parser.readUInt16();
-    sat = parser.readUInt8();
-    speed = parser.readUInt16();
-    positions.push_back({timestamp, lat, lng, alt, ang, sat, speed});
-    return priority;
+    avl_position position;
+    position.time = TimeStamp();
+    parser.readUInt8(); // priority
+    position.lng = parser.readInt32() / 10000000.0;
+    position.lat = parser.readInt32() / 10000000.0;
+    position.alt = parser.readUInt16();
+    position.ang = parser.readUInt16();
+    position.sat = parser.readUInt8();
+    position.speed = parser.readUInt16();
+    positions.push_back(position);
 }
 
-avl_record Teltonika::implementation::ReadAVLData(int priority)
+avl_record Teltonika::implementation::ReadAVLData()
 {
     avl_record data{};
-    int evtio = parser.readUInt16();
-    // Handle priority events differently? (priority > 0)
-    int ntot = parser.readUInt16();
-    int maxoutput = 0;
+    parser.readUInt16(); // event IO ID
+    parser.readUInt16(); // total IO count
 
-    int datasizes[] = {1, 2, 4, 8, -1};
-    for_each(datasizes, datasizes + 5, [&](int size)
-             {
-                 int nitems = parser.readUInt16();
-                 for (int i = 0; i < nitems; ++i)
-                 {
-                     int io = parser.readUInt16();
-                     avl type = avlTypes::get(io);
-                     auto val = type.ReadValue(parser, size);
-
-                     if (io == 548 || io == 385 || !sc::utf8::is_valid(val))
-                     {
-                         // Encode binary data to base64
-                         // 548 -> Advanced BLE Beacon data
-                         // 385 -> BLE Beacon data
-                         val = sc::base64::encode(val);
-                     }
-                     data[static_cast<std::uint16_t>(io)] = val;
-                 }
-             }
-
-    );
-    return data;
-}
-
-uint32_t Teltonika::implementation::CalcCRC(const string& data)
-{
-    uint32_t crc = 0;
-    for (uint8_t byte : data)
+    for (const int size : {1, 2, 4, 8, -1})
     {
-        crc ^= byte;
-        for (int i = 0; i < 8; ++i)
+        const int nitems = parser.readUInt16();
+        for (int i = 0; i < nitems; ++i)
         {
-            if (crc & 1)
-                crc = (crc >> 1) ^ 0xA001; // reversed polynomial
-            else
-                crc >>= 1;
+            const int io = parser.readUInt16();
+            auto val = avlTypes::get(io).ReadValue(parser, size);
+
+            if (io == 548 || io == 385 || !sc::utf8::is_valid(val))
+            {
+                // Encode binary data to base64
+                // 548 -> Advanced BLE Beacon data
+                // 385 -> BLE Beacon data
+                val = sc::base64::encode(val);
+            }
+            data[static_cast<std::uint16_t>(io)] = val;
         }
     }
-    return crc;
-}
-
-
-string Teltonika::Hex(const string& s)
-{
-    stringstream ss;
-    ss << hex << uppercase;
-    for (uint8_t let : s)
-        ss << setw(2) << setfill('0') << static_cast<int>(let);
-    return ss.str();
+    return data;
 }
 
 nlohmann::ordered_json Teltonika::GPSInfo() const
 {
-    const auto& d = *impl_;
+    if (impl_->positions.empty()) return {};
+    const auto& d = impl_->positions.back();
     if (d.lat == 0) return {};
     return {
-        {"gpstime", format_timestamp(d.timestamp)},
+        {"gpstime", format_timestamp(d.time)},
         {"lat", d.lat},
         {"lng", d.lng},
         {"alt", d.alt},

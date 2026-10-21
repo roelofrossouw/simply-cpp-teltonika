@@ -6,8 +6,6 @@
 #include "byte_order.h"
 
 #include <sstream>
-#include <cstring>
-#include <algorithm>
 #include <utility>
 
 using namespace std;
@@ -54,10 +52,6 @@ BinaryParser::BinaryParser(const string &input, Endian endian) : impl_(make_uniq
 BinaryParser::BinaryParser(BinaryParser &&other) noexcept = default;
 BinaryParser &BinaryParser::operator=(BinaryParser &&other) noexcept = default;
 BinaryParser::~BinaryParser() = default;
-
-void BinaryParser::setEndian(const Endian endian) {
-    impl_->endian = endian;
-}
 
 uint8_t BinaryParser::readUInt8() {
     return impl_->read<uint8_t>();
@@ -110,20 +104,6 @@ double BinaryParser::readNumber(int bytes, bool is_signed) {
     }
 }
 
-float BinaryParser::readFloat() {
-    const uint32_t raw = impl_->read_ordered<uint32_t>();
-    float value;
-    memcpy(&value, &raw, sizeof(value));
-    return value;
-}
-
-double BinaryParser::readDouble() {
-    const uint64_t raw = impl_->read_ordered<uint64_t>();
-    double value;
-    memcpy(&value, &raw, sizeof(value));
-    return value;
-}
-
 string BinaryParser::readString(size_t length) {
     auto bytes = readBytes(length);
     return {bytes.begin(), bytes.end()};
@@ -151,10 +131,4 @@ void BinaryParser::seek(const size_t pos) {
 
 void BinaryParser::skip(size_t count) {
     seek(impl_->position + count);
-}
-
-template<typename T>
-T BinaryParser::parseStruct() {
-    T result;
-    return result;
 }
