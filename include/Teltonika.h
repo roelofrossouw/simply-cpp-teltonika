@@ -10,8 +10,8 @@
 #include <nlohmann/json_fwd.hpp>
 
 // One record's IO values: AVL ID to its value, formatted with its unit (83 -> "1234.5l"; see
-// AVLType.cpp for each ID's name, multiplier and unit). Keyed by ID since 3.0.0, because some IDs
-// share a name: 60 and 110 are both "Fuel Rate" (0.01 L/h and 0.1 l/h).
+// AVLType.cpp for each ID's name, multiplier and unit). Keyed by ID because some IDs share a
+// name: 60 and 110 are both "Fuel Rate" (0.01 L/h and 0.1 l/h).
 using avl_record = std::map<std::uint16_t, std::string>;
 using timepoint = std::chrono::system_clock::time_point;
 
@@ -26,8 +26,8 @@ struct avl_position {
     int speed = 0; // km/h
 };
 
-// The record keyed by name instead (avlTypes' names), as AVLData() was before 3.0.0. Where IDs
-// share a name, the highest ID's value is kept; unknown IDs are all "Unknown".
+// The record keyed by name instead (avlTypes' names). Where IDs share a name, the highest ID's
+// value is kept; unknown IDs are all "Unknown".
 [[nodiscard]] nlohmann::ordered_json avl_names(const avl_record& record);
 
 enum DataType
@@ -53,7 +53,6 @@ public:
     explicit Teltonika(const std::vector<std::uint8_t>& input);
     ~Teltonika();
 
-    // A parsed frame can be moved but not copied.
     Teltonika(const Teltonika&) = delete;
     Teltonika& operator=(const Teltonika&) = delete;
     Teltonika(Teltonika&&) noexcept;

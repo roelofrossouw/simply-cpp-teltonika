@@ -1,7 +1,3 @@
-//
-// Created by Roelof Rossouw on 2025/11/21.
-//
-
 #include "BinaryParser.h"
 #include "byte_order.h"
 
