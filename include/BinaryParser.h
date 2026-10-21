@@ -1,7 +1,3 @@
-//
-// Created by Roelof Rossouw on 2025/11/21.
-//
-
 #ifndef BINARYPARSER_H
 #define BINARYPARSER_H
 
@@ -23,10 +19,8 @@ enum class Endian {
 
 class BinaryParser {
 public:
-    // Constructor: accepts a stream or raw buffer
     explicit BinaryParser(std::istream &input, Endian endian = Endian::Little);
 
-    // Constructor: accepts a string
     explicit BinaryParser(const std::string &input, Endian endian = Endian::Little);
 
     ~BinaryParser();
@@ -38,7 +32,6 @@ public:
     BinaryParser(BinaryParser &&other) noexcept;
     BinaryParser &operator=(BinaryParser &&other) noexcept;
 
-    // Core API: read primitive types
     uint8_t readUInt8();
 
     uint16_t readUInt16();
@@ -57,7 +50,6 @@ public:
 
     double readNumber(int bytes, bool is_signed);
 
-    // Read Complex types
     std::string readString(std::size_t length);
 
     std::vector<uint8_t> readBytes(std::size_t count);

@@ -1,7 +1,3 @@
-//
-// Created by Roelof Rossouw on 2025/12/01.
-//
-
 #include "Codec12.h"
 #include "byte_order.h"
 

@@ -18,7 +18,6 @@ using namespace std;
 namespace {
     std::atomic<int> current_level{static_cast<int>(sc::log_level::warning)};
 
-    // Whether a warning is written (see sc::teltonika::log_level()).
     bool warnings() {
         return current_level.load(std::memory_order_relaxed) >= static_cast<int>(sc::log_level::warning);
     }
@@ -180,7 +179,7 @@ void Teltonika::implementation::Codec12()
         parser.readString(parser.readUInt32());
     }
     uint8_t items2 = parser.readUInt8();
-    items = (items1 == items2) ? items1 : 0; // Item count must match...
+    items = (items1 == items2) ? items1 : 0; // Item count must match.
 }
 
 
@@ -220,9 +219,7 @@ avl_record Teltonika::implementation::ReadAVLData()
 
             if (io == 548 || io == 385 || !sc::utf8::is_valid(val))
             {
-                // Encode binary data to base64
-                // 548 -> Advanced BLE Beacon data
-                // 385 -> BLE Beacon data
+                // Binary values go out as base64: 548 is Advanced BLE Beacon data, 385 BLE Beacon data.
                 val = sc::base64::encode(val);
             }
             data[static_cast<std::uint16_t>(io)] = val;

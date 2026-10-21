@@ -1,7 +1,3 @@
-//
-// Created by Roelof Rossouw on 2025/12/01.
-//
-
 #ifndef CODEC12_H
 #define CODEC12_H
 #include <cstdint>
