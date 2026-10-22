@@ -56,6 +56,9 @@ public:
     uint8_t items = 0;
     std::vector<avl_record> avl_data{};
     std::vector<avl_position> positions{};
+    std::vector<avl_raw_record> records{};
+    std::vector<codec12_message> messages{};
+    std::uint8_t codec = 0;
 
     void ParseCodec();
     void Codec8e();
@@ -136,6 +139,21 @@ const std::vector<avl_position>& Teltonika::Positions() const
     return impl_->positions;
 }
 
+std::uint8_t Teltonika::Codec() const
+{
+    return impl_->codec;
+}
+
+const std::vector<avl_raw_record>& Teltonika::Records() const
+{
+    return impl_->records;
+}
+
+const std::vector<codec12_message>& Teltonika::Messages() const
+{
+    return impl_->messages;
+}
+
 std::string Teltonika::CRC() const
 {
     return impl_->valid_ ? impl_->crc_string : std::string(4, '\0');
@@ -143,7 +161,7 @@ std::string Teltonika::CRC() const
 
 void Teltonika::implementation::ParseCodec()
 {
-    int codec = parser.readUInt8();
+    codec = parser.readUInt8();
     if (codec == 12)
     {
         Codec12();
@@ -175,8 +193,10 @@ void Teltonika::implementation::Codec12()
     uint8_t items1 = parser.readUInt8();
     for (int i = 0; i < items1; i++)
     {
-        parser.readUInt8(); // type
-        parser.readString(parser.readUInt32());
+        codec12_message message;
+        message.type = parser.readUInt8();
+        message.text = parser.readString(parser.readUInt32());
+        messages.push_back(std::move(message));
     }
     uint8_t items2 = parser.readUInt8();
     items = (items1 == items2) ? items1 : 0; // Item count must match.
@@ -192,21 +212,30 @@ timepoint Teltonika::implementation::TimeStamp()
 void Teltonika::implementation::ReadGPSData()
 {
     avl_position position;
-    position.time = TimeStamp();
-    parser.readUInt8(); // priority
-    position.lng = parser.readInt32() / 10000000.0;
-    position.lat = parser.readInt32() / 10000000.0;
-    position.alt = parser.readUInt16();
-    position.ang = parser.readUInt16();
-    position.sat = parser.readUInt8();
-    position.speed = parser.readUInt16();
+    avl_raw_record raw;
+    raw.time = position.time = TimeStamp();
+    raw.priority = parser.readUInt8();
+    raw.lng_e7 = parser.readInt32();
+    raw.lat_e7 = parser.readInt32();
+    raw.alt = static_cast<std::int16_t>(parser.readUInt16());
+    raw.ang = parser.readUInt16();
+    raw.sat = parser.readUInt8();
+    raw.speed = parser.readUInt16();
+    position.lng = raw.lng_e7 / 10000000.0;
+    position.lat = raw.lat_e7 / 10000000.0;
+    position.alt = static_cast<std::uint16_t>(raw.alt);
+    position.ang = raw.ang;
+    position.sat = raw.sat;
+    position.speed = raw.speed;
     positions.push_back(position);
+    records.push_back(std::move(raw));
 }
 
 avl_record Teltonika::implementation::ReadAVLData()
 {
     avl_record data{};
-    parser.readUInt16(); // event IO ID
+    auto& raw = records.back(); // ReadGPSData made it
+    raw.event_io = parser.readUInt16();
     parser.readUInt16(); // total IO count
 
     for (const int size : {1, 2, 4, 8, -1})
@@ -215,7 +244,30 @@ avl_record Teltonika::implementation::ReadAVLData()
         for (int i = 0; i < nitems; ++i)
         {
             const int io = parser.readUInt16();
-            auto val = avlTypes::get(io).ReadValue(parser, size);
+            const auto& type = avlTypes::get(io);
+            avl_io_value value{static_cast<std::uint16_t>(io), static_cast<std::uint8_t>(size < 0 ? 0 : size), 0, {}};
+            std::string val;
+            if (size < 0)
+            {
+                value.bytes = parser.readString(static_cast<std::uint16_t>(parser.readUInt16()));
+                val = value.bytes;
+            }
+            else
+            {
+                switch (size)
+                {
+                case 1: value.number = parser.readUInt8(); break;
+                case 2: value.number = parser.readUInt16(); break;
+                case 4: value.number = parser.readUInt32(); break;
+                default: value.number = parser.readUInt64(); break;
+                }
+                // As ReadValue() reads it: signed when the type is, then scaled with its unit.
+                const int bits = size * 8;
+                const auto as_signed = bits == 64 ? static_cast<std::int64_t>(value.number)
+                                                  : static_cast<std::int64_t>(value.number << (64 - bits)) >> (64 - bits);
+                val = type.Format(type.type == AVLType::Signed ? static_cast<double>(as_signed) : static_cast<double>(value.number));
+            }
+            raw.io.push_back(std::move(value));
 
             if (io == 548 || io == 385 || !sc::utf8::is_valid(val))
             {

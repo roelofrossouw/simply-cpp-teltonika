@@ -195,5 +195,48 @@ int main() {
         }
     }
 
+    SECTION("Raw records: every IO by ID with its size and bits, known or not; codec; Codec 12 texts");
+    {
+        const Teltonika avl{codec8e_frame({
+            {1'760'000'060'250, 281234567, -259876543, 1500, 90, 9, 62,
+             {{60, 450}, {10825, 65535}}, {{83, 12345}, {65000, 0xFFFFFFFF}}},
+        })};
+        CHECK(avl.IsValid());
+        CHECK_EQ(int{avl.Codec()}, 142);
+        const auto &records = avl.Records();
+        CHECK_EQ(records.size(), std::size_t{1});
+        if (records.size() == 1) {
+            const auto &r = records[0];
+            CHECK_EQ(std::chrono::duration_cast<std::chrono::milliseconds>(r.time.time_since_epoch()).count(), 1'760'000'060'250LL);
+            CHECK_EQ(r.lat_e7, -259876543);
+            CHECK_EQ(r.lng_e7, 281234567);
+            CHECK_EQ(int{r.alt}, 1500);
+            CHECK_EQ(int{r.sat}, 9);
+            CHECK_EQ(int{r.speed}, 62);
+            CHECK_EQ(r.io.size(), std::size_t{4});
+            if (r.io.size() == 4) {
+                CHECK_EQ(int{r.io[0].id}, 60);
+                CHECK_EQ(int{r.io[0].size}, 2);
+                CHECK_EQ(r.io[0].number, std::uint64_t{450});
+                CHECK_EQ(int{r.io[1].id}, 10825); // an ID the table doesn't know: kept, raw
+                CHECK_EQ(r.io[1].number, std::uint64_t{65535});
+                CHECK_EQ(int{r.io[3].id}, 65000);
+                CHECK_EQ(int{r.io[3].size}, 4);
+                CHECK_EQ(r.io[3].number, std::uint64_t{0xFFFFFFFF}); // bits, unsigned
+            }
+        }
+        CHECK_EQ(const_cast<Teltonika &>(avl).AVLData()[0].at(60), std::string{"4.50L/h"}); // the formatted ones as before
+
+        Codec12 command{"getinfo"};
+        const Teltonika message{command.Data()};
+        CHECK_EQ(int{message.Codec()}, 12);
+        CHECK_EQ(message.Messages().size(), std::size_t{1});
+        if (!message.Messages().empty()) {
+            CHECK_EQ(int{message.Messages()[0].type}, 5);
+            CHECK_EQ(message.Messages()[0].text, std::string{"getinfo"});
+        }
+        CHECK_EQ(int{Teltonika{std::string(12, '\0')}.Codec()}, 0); // not read
+    }
+
     TEST_SUMMARY();
 }
