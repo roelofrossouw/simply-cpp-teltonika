@@ -58,6 +58,18 @@ struct codec12_message {
     std::string text;
 };
 
+// What Teltonika makes of a raw record (since 3.4.0), for those that get records already parsed (by
+// teltonika-listener, say) and want the same as parsing the frame gives:
+// its position, as Positions() has it;
+[[nodiscard]] avl_position to_position(const avl_raw_record& record);
+// one IO value as AVLData() has it: scaled and with its unit by its AVL type, binary ones in base64;
+[[nodiscard]] std::string format_io(const avl_io_value& value);
+// the record's IO values as AVLData() has them;
+[[nodiscard]] avl_record to_record(const avl_raw_record& record);
+// a position as GPSInfo() gives the last one: gpstime (UTC), lat, lng, alt, ang, sat, speed; {} when
+// its latitude is 0.
+[[nodiscard]] nlohmann::ordered_json gps_info(const avl_position& position);
+
 // The record keyed by name instead (avlTypes' names). Where IDs share a name, the highest ID's
 // value is kept; unknown IDs are all "Unknown".
 [[nodiscard]] nlohmann::ordered_json avl_names(const avl_record& record);
