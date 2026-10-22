@@ -70,6 +70,15 @@ struct codec12_message {
 // its latitude is 0.
 [[nodiscard]] nlohmann::ordered_json gps_info(const avl_position& position);
 
+// What caused a record: its event IO's name (since 3.5.0). The IOs that trigger records have
+// their own names ("Panic", "Ignition Event", "Crash", "Device Movement Event" for 0, the periodic
+// position update); any other the AVL table knows by its AVL name; one it doesn't, "IO <id>".
+[[nodiscard]] std::string event_name(std::uint16_t event_io);
+
+// A record's priority, as Teltonika numbers it: 0 "low", 1 "high", 2 "panic"; anything else
+// "priority <n>" (since 3.5.0).
+[[nodiscard]] std::string priority_name(std::uint8_t priority);
+
 // The record keyed by name instead (avlTypes' names). Where IDs share a name, the highest ID's
 // value is kept; unknown IDs are all "Unknown".
 [[nodiscard]] nlohmann::ordered_json avl_names(const avl_record& record);

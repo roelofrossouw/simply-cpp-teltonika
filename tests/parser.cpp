@@ -258,5 +258,20 @@ int main() {
         CHECK(gps_info(avl.Positions()[1]).is_null()); // latitude 0: no fix
     }
 
+    SECTION("Event names: the triggering IOs by meaning, others by AVL name, unknown by number; priorities");
+    {
+        CHECK_EQ(event_name(0), std::string{"Device Movement Event"}); // the periodic position update
+        CHECK_EQ(event_name(3), std::string{"Panic"});
+        CHECK_EQ(event_name(236), std::string{"Panic"});
+        CHECK_EQ(event_name(239), std::string{"Ignition Event"});
+        CHECK_EQ(event_name(247), std::string{"Crash"});
+        CHECK_EQ(event_name(10831), std::string{"Lost Beacon Record"});
+        CHECK_EQ(event_name(66), std::string{"External Voltage"}); // not in the list: its AVL name
+        CHECK_EQ(event_name(65000), std::string{"IO 65000"});      // nowhere
+        CHECK_EQ(priority_name(0), std::string{"low"});
+        CHECK_EQ(priority_name(2), std::string{"panic"});
+        CHECK_EQ(priority_name(9), std::string{"priority 9"});
+    }
+
     TEST_SUMMARY();
 }

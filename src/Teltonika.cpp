@@ -8,6 +8,7 @@
 #include <iostream>
 #include <ctime>
 #include <cstring>
+#include <unordered_map>
 #include <nlohmann/json.hpp>
 #include "base64.h"
 #include "utf8.h"
@@ -324,3 +325,33 @@ nlohmann::ordered_json Teltonika::GPSInfo() const
     if (impl_->positions.empty()) return {};
     return gps_info(impl_->positions.back());
 }
+
+std::string event_name(const std::uint16_t event_io)
+{
+    // The event IOs devices are set up to report, by what they mean.
+    static const std::unordered_map<std::uint16_t, std::string_view> events{
+        {0, "Device Movement Event"}, {1, "Digital Input 1"}, {2, "Tilt and Tip"}, {3, "Panic"},
+        {16, "Total Mileage"}, {25, "BLE Temperature 1"}, {30, "Vehicle Speed"}, {37, "Fuel Level Percent"},
+        {83, "PTO State"}, {87, "Fuel Level"}, {113, "Battery Level"}, {116, "Power Cut"},
+        {236, "Panic"}, {237, "Custom"}, {239, "Ignition Event"}, {240, "Movement"},
+        {247, "Crash"}, {248, "Immobilizer"}, {249, "Jamming"}, {252, "Power Cut"},
+        {253, "Harsh Driving Events"}, {254, "Harsh Driving Value"}, {255, "Speeding"}, {303, "Instant Movement"},
+        {381, "Tilt and Tip"}, {385, "Beacon"}, {389, "OBD OEM Total Mileage"}, {390, "OBD OEM Fuel Level"},
+        {548, "BLE Beacon Data"}, {10828, "Near Beacon Record"}, {10829, "Away Beacon Record"}, {10831, "Lost Beacon Record"},
+    };
+    if (const auto found = events.find(event_io); found != events.end()) return std::string(found->second);
+    if (avlTypes::types_.contains(event_io)) return std::string(avlTypes::get(event_io).name);
+    return "IO " + std::to_string(event_io);
+}
+
+std::string priority_name(const std::uint8_t priority)
+{
+    switch (priority)
+    {
+    case 0: return "low";
+    case 1: return "high";
+    case 2: return "panic";
+    default: return "priority " + std::to_string(priority);
+    }
+}
+
