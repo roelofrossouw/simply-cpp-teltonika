@@ -221,12 +221,7 @@ void Teltonika::implementation::ReadGPSData()
     raw.ang = parser.readUInt16();
     raw.sat = parser.readUInt8();
     raw.speed = parser.readUInt16();
-    position.lng = raw.lng_e7 / 10000000.0;
-    position.lat = raw.lat_e7 / 10000000.0;
-    position.alt = static_cast<std::uint16_t>(raw.alt);
-    position.ang = raw.ang;
-    position.sat = raw.sat;
-    position.speed = raw.speed;
+    position = to_position(raw);
     positions.push_back(position);
     records.push_back(std::move(raw));
 }
@@ -244,13 +239,10 @@ avl_record Teltonika::implementation::ReadAVLData()
         for (int i = 0; i < nitems; ++i)
         {
             const int io = parser.readUInt16();
-            const auto& type = avlTypes::get(io);
             avl_io_value value{static_cast<std::uint16_t>(io), static_cast<std::uint8_t>(size < 0 ? 0 : size), 0, {}};
-            std::string val;
             if (size < 0)
             {
                 value.bytes = parser.readString(static_cast<std::uint16_t>(parser.readUInt16()));
-                val = value.bytes;
             }
             else
             {
@@ -261,29 +253,60 @@ avl_record Teltonika::implementation::ReadAVLData()
                 case 4: value.number = parser.readUInt32(); break;
                 default: value.number = parser.readUInt64(); break;
                 }
-                // As ReadValue() reads it: signed when the type is, then scaled with its unit.
-                const int bits = size * 8;
-                const auto as_signed = bits == 64 ? static_cast<std::int64_t>(value.number)
-                                                  : static_cast<std::int64_t>(value.number << (64 - bits)) >> (64 - bits);
-                val = type.Format(type.type == AVLType::Signed ? static_cast<double>(as_signed) : static_cast<double>(value.number));
             }
+            data[value.id] = format_io(value);
             raw.io.push_back(std::move(value));
-
-            if (io == 548 || io == 385 || !sc::utf8::is_valid(val))
-            {
-                // Binary values go out as base64: 548 is Advanced BLE Beacon data, 385 BLE Beacon data.
-                val = sc::base64::encode(val);
-            }
-            data[static_cast<std::uint16_t>(io)] = val;
         }
     }
     return data;
 }
 
-nlohmann::ordered_json Teltonika::GPSInfo() const
+avl_position to_position(const avl_raw_record& record)
 {
-    if (impl_->positions.empty()) return {};
-    const auto& d = impl_->positions.back();
+    avl_position position;
+    position.time = record.time;
+    position.lng = record.lng_e7 / 10000000.0;
+    position.lat = record.lat_e7 / 10000000.0;
+    position.alt = static_cast<std::uint16_t>(record.alt);
+    position.ang = record.ang;
+    position.sat = record.sat;
+    position.speed = record.speed;
+    return position;
+}
+
+std::string format_io(const avl_io_value& value)
+{
+    const auto& type = avlTypes::get(value.id);
+    std::string text;
+    if (value.size == 0)
+    {
+        text = value.bytes;
+    }
+    else
+    {
+        // As ReadValue() reads it: signed when the type is, then scaled with its unit.
+        const int bits = value.size * 8;
+        const auto as_signed = bits >= 64 ? static_cast<std::int64_t>(value.number)
+                                          : static_cast<std::int64_t>(value.number << (64 - bits)) >> (64 - bits);
+        text = type.Format(type.type == AVLType::Signed ? static_cast<double>(as_signed) : static_cast<double>(value.number));
+    }
+    if (value.id == 548 || value.id == 385 || !sc::utf8::is_valid(text))
+    {
+        // Binary values go out as base64: 548 is Advanced BLE Beacon data, 385 BLE Beacon data.
+        text = sc::base64::encode(text);
+    }
+    return text;
+}
+
+avl_record to_record(const avl_raw_record& record)
+{
+    avl_record data{};
+    for (const auto& value : record.io) data[value.id] = format_io(value);
+    return data;
+}
+
+nlohmann::ordered_json gps_info(const avl_position& d)
+{
     if (d.lat == 0) return {};
     return {
         {"gpstime", format_timestamp(d.time)},
@@ -294,4 +317,10 @@ nlohmann::ordered_json Teltonika::GPSInfo() const
         {"sat", d.sat},
         {"speed", d.speed}
     };
+}
+
+nlohmann::ordered_json Teltonika::GPSInfo() const
+{
+    if (impl_->positions.empty()) return {};
+    return gps_info(impl_->positions.back());
 }

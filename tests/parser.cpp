@@ -238,5 +238,25 @@ int main() {
         CHECK_EQ(int{Teltonika{std::string(12, '\0')}.Codec()}, 0); // not read
     }
 
+    SECTION("From raw records, the same as from the frame: to_position, to_record, gps_info");
+    {
+        const Teltonika avl{codec8e_frame({
+            {1'760'000'060'250, 281234567, -259876543, 1500, 90, 9, 62, {{60, 450}, {17, 0xFFF6}}, {{83, 12345}, {10825, 7}}},
+            {1'760'000'000'000, 0, 0, 0, 0, 0, 0},
+        })};
+        auto &formatted = const_cast<Teltonika &>(avl).AVLData();
+        CHECK_EQ(avl.Records().size(), std::size_t{2});
+        for (std::size_t i = 0; i < avl.Records().size(); ++i) {
+            CHECK(to_record(avl.Records()[i]) == formatted[i]);
+            const auto p = to_position(avl.Records()[i]);
+            CHECK(p.time == avl.Positions()[i].time && p.lat == avl.Positions()[i].lat && p.lng == avl.Positions()[i].lng &&
+                  p.alt == avl.Positions()[i].alt && p.speed == avl.Positions()[i].speed && p.sat == avl.Positions()[i].sat);
+        }
+        CHECK_EQ(formatted[0].at(17), std::string{"-10mG"}); // signed (Axis X), from its raw bits
+        CHECK(gps_info(avl.Positions()[0]) == nlohmann::ordered_json(Teltonika{codec8e_frame({
+            {1'760'000'060'250, 281234567, -259876543, 1500, 90, 9, 62}})}.GPSInfo()));
+        CHECK(gps_info(avl.Positions()[1]).is_null()); // latitude 0: no fix
+    }
+
     TEST_SUMMARY();
 }
