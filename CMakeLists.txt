@@ -38,6 +38,6 @@ endif ()
 # program built against 1.x would corrupt memory with this library: apt has to upgrade those
 # together with it. 1.0.29 is the first streamvms built against 2.0.
 set(CPACK_DEBIAN_RUNTIME_PACKAGE_BREAKS "streamvms (<< 1.0.29~)")
+# sc-core is built into the library, so the runtime package doesn't need simply-cpp.
 package_sc_module(
-        DEPENDS "simply-cpp (>= 1.20.0~)"
         DEV_DEPENDS "simply-cpp-dev (>= 1.20.0~)" nlohmann-json3-dev)
