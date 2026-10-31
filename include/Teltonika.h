@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 #include <nlohmann/json_fwd.hpp>
@@ -78,6 +79,41 @@ struct codec12_message {
 // A record's priority, as Teltonika numbers it: 0 "low", 1 "high", 2 "panic"; anything else
 // "priority <n>" (since 3.5.0).
 [[nodiscard]] std::string priority_name(std::uint8_t priority);
+
+// One BLE beacon a record reports (since 3.6.0), from AVL 385 (Beacon, the simple mode), 548 (BLE
+// Beacon Data, the advanced mode) or the advanced mode's 10828 Near, 10829 Away and 10831 Lost
+// Beacon Records. Only what the device sent is set; ids and addresses are lowercase hex.
+struct ble_beacon
+{
+    std::string mac;                 // "7c:d9:f4:07:b4:36"; the advanced mode's, not the simple one's
+    std::string protocol;            // "iBeacon", "Eddystone" or "" when the device sent no identity
+    std::string uuid;                // iBeacon: its UUID, 32 hex digits
+    std::optional<std::uint16_t> major, minor;
+    std::string eddystone_namespace; // Eddystone UID: 20 hex digits
+    std::string instance;            // and its instance, 12
+    std::string url;                 // Eddystone URL
+    std::optional<int> rssi;         // dBm, as the device received it
+    std::optional<int> rssi_at_1m;   // dBm at 1 m, from the advertised transmit power
+    std::optional<int> battery_mv;
+    std::optional<double> temperature_c;
+    std::optional<bool> low_battery;
+    std::optional<int> humidity;     // %
+    std::optional<bool> magnet, motion;
+    std::optional<int> motion_count;
+    std::optional<int> pitch, roll;  // degrees
+    std::string name;
+};
+
+// Every beacon in a beacon IO value (385, 548, 10828, 10829 or 10831); none for any other IO, or
+// when the value can't be read (what was read before that is kept). The advanced mode's beacon
+// data is the beacon's own BLE advertisement, read for iBeacon, Eddystone UID, URL and TLM.
+[[nodiscard]] std::vector<ble_beacon> decode_beacons(const avl_io_value& value);
+
+// About how far a beacon is, in metres, from its RSSI and its RSSI at 1 m (the advertised power,
+// else -59 dBm, typical for beacons), by the log-distance path loss model with exponent 2 (open
+// space; walls and bodies make it read further). Rounded to 0.1 m; an estimate within a factor of
+// two at best.
+[[nodiscard]] double beacon_distance_m(int rssi, std::optional<int> rssi_at_1m = std::nullopt);
 
 // The record keyed by name instead (avlTypes' names). Where IDs share a name, the highest ID's
 // value is kept; unknown IDs are all "Unknown".

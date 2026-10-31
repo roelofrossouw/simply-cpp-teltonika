@@ -273,5 +273,108 @@ int main() {
         CHECK_EQ(priority_name(9), std::string{"priority 9"});
     }
 
+    SECTION("BLE beacons: the simple mode (385), Teltonika's own example");
+    {
+        const auto bytes = [](const std::string& hex) {
+            std::string out;
+            for (std::size_t i = 0; i + 1 < hex.size(); i += 2) out += static_cast<char>(std::stoi(hex.substr(i, 2), nullptr, 16));
+            return out;
+        };
+        const avl_io_value simple{385, 0, 0, bytes(
+            "11214B5C049F515341FCA950D2C264414E1000050006BA21E2C56DB5DFFB48D2B060D0F5A71096E000000000A92131A74BB76A7942"
+            "3196C916CFB9FAED45002D00159F0700112233445566778899ABCDE0810047AE0BE80015210F86676BEC91420A94409110029AFAC4"
+            "15B31A0AA101DE9C18E92CA5AA689697365434663222BA21EBBBDE835D7F4965B5F06C2EDCB3A55300010080A501736B79686F7374"
+            "2E646B000010000128AD")};
+        const auto beacons = decode_beacons(simple);
+        CHECK_EQ(beacons.size(), std::size_t{8});
+        CHECK_EQ(beacons[0].protocol, std::string{"iBeacon"});
+        CHECK_EQ(beacons[0].uuid, std::string{"4b5c049f515341fca950d2c264414e10"});
+        CHECK_EQ(*beacons[0].major, std::uint16_t{5});
+        CHECK_EQ(*beacons[0].minor, std::uint16_t{6});
+        CHECK_EQ(*beacons[0].rssi, -70);
+        CHECK(beacons[0].mac.empty()); // the simple mode sends no MAC
+        CHECK_EQ(beacons[3].protocol, std::string{"Eddystone"});
+        CHECK_EQ(beacons[3].eddystone_namespace, std::string{"00112233445566778899"});
+        CHECK_EQ(beacons[3].instance, std::string{"abcde0810047"});
+        CHECK_EQ(*beacons[3].rssi, -82);
+        CHECK_EQ(*beacons[3].battery_mv, 3048);
+        CHECK_EQ(*beacons[3].temperature_c, 21.0);
+        CHECK(!beacons[0].battery_mv.has_value());
+        CHECK_EQ(beacons[7].instance, std::string{"000010000128"});
+        CHECK_EQ(*beacons[7].rssi, -83);
+        CHECK(decode_beacons({385, 0, 0, bytes("11")}).empty()); // none seen
+        CHECK_EQ(decode_beacons({385, 0, 0, bytes("1121") + bytes("4B5C049F")}).size(), std::size_t{0}); // cut short
+        CHECK(decode_beacons({66, 2, 12800, {}}).empty()); // not a beacon IO
+    }
+
+    SECTION("BLE beacons: the advanced mode (548 and the Near/Away/Lost records)");
+    {
+        const auto bytes = [](const std::string& hex) {
+            std::string out;
+            for (std::size_t i = 0; i + 1 < hex.size(); i += 2) out += static_cast<char>(std::stoi(hex.substr(i, 2), nullptr, 16));
+            return out;
+        };
+        // Two beacons as the fleet's devices send them: RSSI, MAC and the beacon's advertisement, an
+        // Eddystone UID (power -24 dBm at 0 m) and an iBeacon (-59 dBm at 1 m).
+        const std::string eddystone = "0001C6" "0106001122334455" "021F" "020106" "0303AAFE" "1716AAFE00E8"
+                                      "0102030405060708090A" "0B0C0D0E0F10" "0000";
+        const std::string ibeacon = "0001A3" "0106665544332211" "021E" "020106" "1AFF4C000215"
+                                    "E2C56DB5DFFB48D2B060D0F5A71096E0" "0007" "0009" "C5";
+        const auto advanced = decode_beacons({548, 0, 0, bytes("01" "2C" + eddystone + "2B" + ibeacon)});
+        CHECK_EQ(advanced.size(), std::size_t{2});
+        CHECK_EQ(advanced[0].mac, std::string{"00:11:22:33:44:55"});
+        CHECK_EQ(*advanced[0].rssi, -58);
+        CHECK_EQ(advanced[0].protocol, std::string{"Eddystone"});
+        CHECK_EQ(advanced[0].eddystone_namespace, std::string{"0102030405060708090a"});
+        CHECK_EQ(advanced[0].instance, std::string{"0b0c0d0e0f10"});
+        CHECK_EQ(*advanced[0].rssi_at_1m, -65); // -24 at 0 m, less 41 dB to 1 m
+        CHECK_EQ(advanced[1].mac, std::string{"66:55:44:33:22:11"});
+        CHECK_EQ(advanced[1].protocol, std::string{"iBeacon"});
+        CHECK_EQ(advanced[1].uuid, std::string{"e2c56db5dffb48d2b060d0f5a71096e0"});
+        CHECK_EQ(*advanced[1].major, std::uint16_t{7});
+        CHECK_EQ(*advanced[1].minor, std::uint16_t{9});
+        CHECK_EQ(*advanced[1].rssi_at_1m, -59);
+
+        // A Near Beacon Record: MAC (15), low battery (13), battery voltage (14).
+        const auto near = decode_beacons({10828, 0, 0, bytes("01" "12" "0001D5" "0F06001122334466" "0D0100" "0E020C12")});
+        CHECK_EQ(near.size(), std::size_t{1});
+        CHECK_EQ(near[0].mac, std::string{"00:11:22:33:44:66"});
+        CHECK_EQ(*near[0].rssi, -43);
+        CHECK_EQ(*near[0].low_battery, false);
+        CHECK_EQ(*near[0].battery_mv, 3090);
+
+        // Older firmware's beacon data: flags, 0x80 a voltage byte (x 10 + 2000 mV), as Traccar's test has it.
+        const auto older = decode_beacons({548, 0, 0, bytes("01" "0F" "0001C6" "0106BABBF3630055" "0202806D")});
+        CHECK_EQ(older.size(), std::size_t{1});
+        CHECK_EQ(*older[0].battery_mv, 3090);
+        CHECK_EQ(older[0].mac, std::string{"ba:bb:f3:63:00:55"});
+
+        // An Eddystone TLM (battery, temperature in 8.8) and URL, and a name; sensor fields.
+        const auto telemetry = decode_beacons({548, 0, 0, bytes(
+            "01" "40" "0001B0" "0106AABBCCDDEEFF" "0212" "1116AAFE20000BB81580000000010000000A"
+            "0507" "736D6F6B6579" "21" "06020898" "070137" "080101" "09010A" "0A020003" "0B01FB" "0C02FFF6")});
+        CHECK_EQ(telemetry.size(), std::size_t{1});
+        CHECK_EQ(*telemetry[0].battery_mv, 3000);
+        CHECK_EQ(*telemetry[0].temperature_c, 22.0);    // field 6: 0x0898 = 2200 x 0.01 °C (after the TLM's 21.5)
+        CHECK_EQ(telemetry[0].name, std::string{"smokey!"});
+        CHECK_EQ(*telemetry[0].humidity, 55);
+        CHECK_EQ(*telemetry[0].magnet, true);
+        CHECK_EQ(*telemetry[0].motion, true);
+        CHECK_EQ(*telemetry[0].motion_count, 3);
+        CHECK_EQ(*telemetry[0].pitch, -5);
+        CHECK_EQ(*telemetry[0].roll, -10);
+        const auto url = decode_beacons({548, 0, 0, bytes("01" "19" "0106AABBCCDDEEF0" "020F" "0E16AAFE10EB03" "6578616D706C6507")});
+        CHECK_EQ(url.size(), std::size_t{1});
+        CHECK_EQ(url[0].url, std::string{"https://example.com"});
+        CHECK_EQ(*url[0].rssi_at_1m, -62);
+    }
+
+    SECTION("About how far a beacon is, from its RSSI");
+    CHECK_EQ(beacon_distance_m(-59), 1.0);
+    CHECK_EQ(beacon_distance_m(-79), 10.0);
+    CHECK_EQ(beacon_distance_m(-65, -65), 1.0);
+    CHECK_EQ(beacon_distance_m(-71, -65), 2.0);
+    CHECK_EQ(beacon_distance_m(-20), 0.1); // closer than 0.1 m reads 0.1
+
     TEST_SUMMARY();
 }
