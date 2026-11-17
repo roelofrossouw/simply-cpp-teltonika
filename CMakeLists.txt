@@ -8,7 +8,7 @@ option(SC_TELTONIKA_BUILD_TESTS "Build simply-cpp-teltonika tests" ${PROJECT_IS_
 get_sc_version()
 message(STATUS "SimplyCPP ${SC_MODULE} Version: ${SC_VERSION}")
 
-find_or_install_package(sc-core simply-cpp-dev simply-cpp 2.2.0) # log_level.h
+find_or_install_package(sc-core simply-cpp-dev simply-cpp 3.0.0) # log_level.h
 find_or_install_package(nlohmann_json nlohmann-json3-dev nlohmann-json)
 
 set(SOURCE_OBJECTS)
@@ -40,4 +40,4 @@ endif ()
 set(CPACK_DEBIAN_RUNTIME_PACKAGE_BREAKS "streamvms (<< 1.0.29~)")
 # sc-core is built into the library, so the runtime package doesn't need simply-cpp.
 package_sc_module(
-        DEV_DEPENDS "simply-cpp-dev (>= 1.20.0~)" nlohmann-json3-dev)
+        DEV_DEPENDS "simply-cpp-dev (>= 3.0.0~)" nlohmann-json3-dev)
