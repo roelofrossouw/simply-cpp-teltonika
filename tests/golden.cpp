@@ -3,8 +3,8 @@
 // names, beacons and Codec 12 commands. The hash was taken from sc-teltonika 4.0.1 before 5.0.0
 // renamed the API, on macOS and on Ubuntu resolute, so 5.0.0 must parse and format exactly as 4.0.1
 // did. `golden --dump` prints the text instead, to see what changed.
-#include <sc/teltonika/Codec12.h>
-#include <sc/teltonika/Teltonika.h>
+#include <sc/teltonika/command.h>
+#include <sc/teltonika/teltonika.h>
 #include <sc_test.h>
 
 #include <cstdint>
@@ -14,6 +14,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+using namespace sc::teltonika;
 
 namespace {
     template<typename T>
@@ -130,20 +132,20 @@ namespace {
         }
     }
 
-    void dump_frame(std::ostream &out, const std::string &frame) {
-        Teltonika parsed{frame};
-        out << "frame " << hex(frame).substr(0, 64) << " valid=" << parsed.IsValid() << " items=" << int{parsed.Items()}
-            << " crc=" << parsed.CRC() << " codec=" << int{parsed.Codec()} << '\n';
-        out << " gps " << parsed.GPSInfo().dump() << '\n';
-        for (const auto &p: parsed.Positions())
+    void dump_frame(std::ostream &out, const std::string &data) {
+        frame parsed{data};
+        out << "frame " << hex(data).substr(0, 64) << " valid=" << parsed.is_valid() << " items=" << int{parsed.items()}
+            << " crc=" << parsed.crc() << " codec=" << int{parsed.codec()} << '\n';
+        out << " gps " << parsed.gps().dump() << '\n';
+        for (const auto &p: parsed.positions())
             out << " position " << std::chrono::duration_cast<std::chrono::milliseconds>(p.time.time_since_epoch()).count() << ' ' << p.lat
                 << ' ' << p.lng << ' ' << p.alt << ' ' << p.ang << ' ' << p.sat << ' ' << p.speed << '\n';
-        for (const auto &record: parsed.AVLData()) {
+        for (const auto &record: parsed.avl_data()) {
             out << " record";
             for (const auto &[id, value]: record) out << ' ' << id << '=' << value;
             out << '\n' << " names " << avl_names(record).dump() << '\n';
         }
-        for (const auto &r: parsed.Records()) {
+        for (const auto &r: parsed.records()) {
             out << " raw " << std::chrono::duration_cast<std::chrono::milliseconds>(r.time.time_since_epoch()).count() << ' '
                 << int{r.priority} << ' ' << r.lng_e7 << ' ' << r.lat_e7 << ' ' << r.alt << ' ' << r.ang << ' ' << int{r.sat} << ' '
                 << r.speed << ' ' << r.event_io << " event=" << event_name(r.event_io) << " priority=" << priority_name(r.priority) << '\n';
@@ -157,7 +159,7 @@ namespace {
                 dump_beacons(out, decode_beacons(v));
             }
         }
-        for (const auto &m: parsed.Messages()) out << " message " << int{m.type} << ' ' << m.text << '\n';
+        for (const auto &m: parsed.messages()) out << " message " << int{m.type} << ' ' << m.text << '\n';
     }
 
     std::string dump() {
@@ -200,8 +202,8 @@ namespace {
             {1'760'000'120'999, 2, -1800000000, 900000000, -42, 359, 255, 250, 247, {{247, 1, 2, {}}, {12, 4, 0xFFFFFFF6, {}}}},
         }));
         frames.push_back(codec8e_frame({}));
-        frames.push_back(Codec12{"getinfo"}.Data());
-        frames.push_back(Codec12{"setdigout 1 60"}.Data());
+        frames.push_back(command{"getinfo"}.bytes());
+        frames.push_back(command{"setdigout 1 60"}.bytes());
         frames.push_back(std::string{});
         frames.push_back(std::string(12, '\0'));
         std::string corrupt = frames[0];
@@ -209,8 +211,8 @@ namespace {
         frames.push_back(corrupt);
         for (const auto &f: frames) dump_frame(out, f);
 
-        for (const auto &command: {"getinfo", "getver", "setdigout 1 60", ""})
-            out << "codec12 " << command << ' ' << hex(Codec12{command}.Data()) << ' ' << Codec12::CalcCRC(command) << '\n';
+        for (const auto &text: {"getinfo", "getver", "setdigout 1 60", ""})
+            out << "codec12 " << text << ' ' << hex(command{text}.bytes()) << ' ' << command::crc(text) << '\n';
         for (const int rssi: {-20, -59, -65, -71, -79, -100})
             for (const int at: {-59, -65})
                 out << "distance " << rssi << ' ' << at << ' ' << beacon_distance_m(rssi, at) << ' ' << beacon_distance_m(rssi) << '\n';

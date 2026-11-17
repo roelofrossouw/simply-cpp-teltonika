@@ -1,5 +1,5 @@
-#ifndef SC_TELTONIKA_BYTE_ORDER_H
-#define SC_TELTONIKA_BYTE_ORDER_H
+#pragma once
+// Private: byte swapping for the frames' big-endian numbers. Not installed.
 
 #include <bit>
 #include <climits>
@@ -22,4 +22,3 @@ namespace sc::teltonika {
     }
 }
 
-#endif

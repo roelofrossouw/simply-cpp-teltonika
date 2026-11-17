@@ -1,7 +1,8 @@
-#include <sc/teltonika/Teltonika.h>
-#include <sc/teltonika/AVLType.h>
-#include <sc/teltonika/Codec12.h>
-#include <sc/teltonika/byte_order.h>
+#include <sc/teltonika/teltonika.h>
+#include <sc/teltonika/command.h>
+#include "avl_type.h"
+#include "binary_parser.h"
+#include "byte_order.h"
 
 #include <algorithm>
 #include <atomic>
@@ -20,6 +21,8 @@
 
 using namespace std;
 
+namespace sc::teltonika {
+
 namespace {
     std::atomic<int> current_level{static_cast<int>(sc::log_level::warning)};
 
@@ -28,16 +31,16 @@ namespace {
     }
 }
 
-void sc::teltonika::log_level(const sc::log_level level) {
+void log_level(const sc::log_level level) {
     current_level.store(static_cast<int>(level), std::memory_order_relaxed);
 }
 
-sc::log_level sc::teltonika::log_level() {
+sc::log_level log_level() {
     return static_cast<sc::log_level>(current_level.load(std::memory_order_relaxed));
 }
 
 namespace {
-    std::string format_timestamp(const timepoint timestamp)
+    std::string format_timestamp(const time_point timestamp)
     {
         const auto seconds = std::chrono::floor<std::chrono::seconds>(timestamp);
         const auto value = std::chrono::system_clock::to_time_t(seconds);
@@ -50,12 +53,12 @@ namespace {
     }
 }
 
-class Teltonika::implementation
+class frame::implementation
 {
 public:
     explicit implementation(const std::string& input);
 
-    BinaryParser parser;
+    binary_parser parser;
     std::string crc_string;
     bool valid_ = false;
     uint8_t items = 0;
@@ -65,15 +68,15 @@ public:
     std::vector<codec12_message> messages{};
     std::uint8_t codec = 0;
 
-    void ParseCodec();
-    void Codec8e();
-    void Codec12();
-    timepoint TimeStamp();
-    void ReadGPSData();
-    avl_record ReadAVLData();
+    void parse_codec();
+    void codec8e();
+    void codec12();
+    time_point time_stamp();
+    void read_gps_data();
+    avl_record read_avl_data();
 };
 
-Teltonika::implementation::implementation(const string& input) : parser(input, Endian::Big)
+frame::implementation::implementation(const string& input) : parser(input, endian::big)
 {
     try
     {
@@ -83,20 +86,20 @@ Teltonika::implementation::implementation(const string& input) : parser(input, E
 
         uint32_t read_crc = 0;
         std::memcpy(&read_crc, crc_string.data(), sizeof(read_crc));
-        read_crc = sc::teltonika::byteswap(read_crc);
+        read_crc = byteswap(read_crc);
 
         parser.skip(4); // Preamble...
-        const uint32_t data_length = parser.readUInt32();
+        const uint32_t data_length = parser.read_uint32();
         if (input.size() != data_length + 12)
         {
             if (warnings()) cerr << "Invalid data length: " << input.size() << " vs " << data_length << endl;
             return;
         }
 
-        if (read_crc != Codec12::CalcCRC(input.substr(8, input.size() - 12))) return;
+        if (read_crc != command::crc(input.substr(8, input.size() - 12))) return;
 
         valid_ = true;
-        ParseCodec();
+        parse_codec();
     }
     catch (const std::exception& e)
     {
@@ -104,25 +107,25 @@ Teltonika::implementation::implementation(const string& input) : parser(input, E
     }
 }
 
-Teltonika::Teltonika(const std::vector<std::uint8_t>& input) :
-    Teltonika(std::string(input.begin(), input.end()))
+frame::frame(const std::vector<std::uint8_t>& input) :
+    frame(std::string(input.begin(), input.end()))
 {
 }
 
-Teltonika::Teltonika(const string& input) : impl_(make_unique<implementation>(input))
+frame::frame(const string& input) : impl_(make_unique<implementation>(input))
 {
 }
 
-Teltonika::~Teltonika() = default;
-Teltonika::Teltonika(Teltonika&&) noexcept = default;
-Teltonika& Teltonika::operator=(Teltonika&&) noexcept = default;
+frame::~frame() = default;
+frame::frame(frame&&) noexcept = default;
+frame& frame::operator=(frame&&) noexcept = default;
 
-bool Teltonika::IsValid() const
+bool frame::is_valid() const
 {
     return impl_->valid_;
 }
 
-uint8_t Teltonika::Items() const
+uint8_t frame::items() const
 {
     return impl_->items;
 }
@@ -130,133 +133,133 @@ uint8_t Teltonika::Items() const
 nlohmann::ordered_json avl_names(const avl_record& record)
 {
     auto named = nlohmann::ordered_json::object();
-    for (const auto& [io, value] : record) named[std::string(avlTypes::get(io).name)] = value;
+    for (const auto& [io, value] : record) named[std::string(avl_types::get(io).name)] = value;
     return named;
 }
 
-std::vector<avl_record>& Teltonika::AVLData()
+std::vector<avl_record>& frame::avl_data()
 {
     return impl_->avl_data;
 }
 
-const std::vector<avl_position>& Teltonika::Positions() const
+const std::vector<avl_position>& frame::positions() const
 {
     return impl_->positions;
 }
 
-std::uint8_t Teltonika::Codec() const
+std::uint8_t frame::codec() const
 {
     return impl_->codec;
 }
 
-const std::vector<avl_raw_record>& Teltonika::Records() const
+const std::vector<avl_raw_record>& frame::records() const
 {
     return impl_->records;
 }
 
-const std::vector<codec12_message>& Teltonika::Messages() const
+const std::vector<codec12_message>& frame::messages() const
 {
     return impl_->messages;
 }
 
-std::string Teltonika::CRC() const
+std::string frame::crc() const
 {
     return impl_->valid_ ? impl_->crc_string : std::string(4, '\0');
 }
 
-void Teltonika::implementation::ParseCodec()
+void frame::implementation::parse_codec()
 {
-    codec = parser.readUInt8();
+    codec = parser.read_uint8();
     if (codec == 12)
     {
-        Codec12();
+        codec12();
         return;
     }
     if (codec == 142)
     {
-        Codec8e();
+        codec8e();
         return;
     }
     if (warnings()) cerr << "Unknown Codec: " << (int)codec << endl;
 }
 
 
-void Teltonika::implementation::Codec8e()
+void frame::implementation::codec8e()
 {
-    uint8_t items1 = parser.readUInt8();
+    uint8_t items1 = parser.read_uint8();
     for (int i = 0; i < items1; i++)
     {
-        ReadGPSData();
-        avl_data.push_back(ReadAVLData()); // Must be read to get to end and check crc.
+        read_gps_data();
+        avl_data.push_back(read_avl_data()); // Must be read to get to end and check crc.
     }
-    uint8_t items2 = parser.readUInt8();
+    uint8_t items2 = parser.read_uint8();
     items = (items1 == items2) ? items1 : 0; // Item count must match.
 }
 
-void Teltonika::implementation::Codec12()
+void frame::implementation::codec12()
 {
-    uint8_t items1 = parser.readUInt8();
+    uint8_t items1 = parser.read_uint8();
     for (int i = 0; i < items1; i++)
     {
         codec12_message message;
-        message.type = parser.readUInt8();
-        message.text = parser.readString(parser.readUInt32());
+        message.type = parser.read_uint8();
+        message.text = parser.read_string(parser.read_uint32());
         messages.push_back(std::move(message));
     }
-    uint8_t items2 = parser.readUInt8();
+    uint8_t items2 = parser.read_uint8();
     items = (items1 == items2) ? items1 : 0; // Item count must match.
 }
 
 
-timepoint Teltonika::implementation::TimeStamp()
+time_point frame::implementation::time_stamp()
 {
     // Milliseconds since the epoch.
-    return timepoint{chrono::duration_cast<timepoint::duration>(chrono::milliseconds{parser.readUInt64()})};
+    return time_point{chrono::duration_cast<time_point::duration>(chrono::milliseconds{parser.read_uint64()})};
 }
 
-void Teltonika::implementation::ReadGPSData()
+void frame::implementation::read_gps_data()
 {
     avl_position position;
     avl_raw_record raw;
-    raw.time = position.time = TimeStamp();
-    raw.priority = parser.readUInt8();
-    raw.lng_e7 = parser.readInt32();
-    raw.lat_e7 = parser.readInt32();
-    raw.alt = static_cast<std::int16_t>(parser.readUInt16());
-    raw.ang = parser.readUInt16();
-    raw.sat = parser.readUInt8();
-    raw.speed = parser.readUInt16();
+    raw.time = position.time = time_stamp();
+    raw.priority = parser.read_uint8();
+    raw.lng_e7 = parser.read_int32();
+    raw.lat_e7 = parser.read_int32();
+    raw.alt = static_cast<std::int16_t>(parser.read_uint16());
+    raw.ang = parser.read_uint16();
+    raw.sat = parser.read_uint8();
+    raw.speed = parser.read_uint16();
     position = to_position(raw);
     positions.push_back(position);
     records.push_back(std::move(raw));
 }
 
-avl_record Teltonika::implementation::ReadAVLData()
+avl_record frame::implementation::read_avl_data()
 {
     avl_record data{};
     auto& raw = records.back(); // ReadGPSData made it
-    raw.event_io = parser.readUInt16();
-    parser.readUInt16(); // total IO count
+    raw.event_io = parser.read_uint16();
+    parser.read_uint16(); // total IO count
 
     for (const int size : {1, 2, 4, 8, -1})
     {
-        const int nitems = parser.readUInt16();
+        const int nitems = parser.read_uint16();
         for (int i = 0; i < nitems; ++i)
         {
-            const int io = parser.readUInt16();
+            const int io = parser.read_uint16();
             avl_io_value value{static_cast<std::uint16_t>(io), static_cast<std::uint8_t>(size < 0 ? 0 : size), 0, {}};
             if (size < 0)
             {
-                value.bytes = parser.readString(static_cast<std::uint16_t>(parser.readUInt16()));
+                value.bytes = parser.read_string(static_cast<std::uint16_t>(parser.read_uint16()));
             }
             else
             {
                 switch (size)
                 {
-                case 1: value.number = parser.readUInt8(); break;
-                case 2: value.number = parser.readUInt16(); break;
-                case 4: value.number = parser.readUInt32(); break;
-                default: value.number = parser.readUInt64(); break;
+                case 1: value.number = parser.read_uint8(); break;
+                case 2: value.number = parser.read_uint16(); break;
+                case 4: value.number = parser.read_uint32(); break;
+                default: value.number = parser.read_uint64(); break;
                 }
             }
             data[value.id] = format_io(value);
@@ -281,7 +284,7 @@ avl_position to_position(const avl_raw_record& record)
 
 std::string format_io(const avl_io_value& value)
 {
-    const auto& type = avlTypes::get(value.id);
+    const auto& type = avl_types::get(value.id);
     std::string text;
     if (value.size == 0)
     {
@@ -293,7 +296,7 @@ std::string format_io(const avl_io_value& value)
         const int bits = value.size * 8;
         const auto as_signed = bits >= 64 ? static_cast<std::int64_t>(value.number)
                                           : static_cast<std::int64_t>(value.number << (64 - bits)) >> (64 - bits);
-        text = type.Format(type.type == AVLType::Signed ? static_cast<double>(as_signed) : static_cast<double>(value.number));
+        text = type.format(type.type == avl_type::signed_number ? static_cast<double>(as_signed) : static_cast<double>(value.number));
     }
     if (value.id == 548 || value.id == 385 || !sc::utf8::is_valid(text))
     {
@@ -324,7 +327,7 @@ nlohmann::ordered_json gps_info(const avl_position& d)
     };
 }
 
-nlohmann::ordered_json Teltonika::GPSInfo() const
+nlohmann::ordered_json frame::gps() const
 {
     if (impl_->positions.empty()) return {};
     return gps_info(impl_->positions.back());
@@ -344,7 +347,7 @@ std::string event_name(const std::uint16_t event_io)
         {548, "BLE Beacon Data"}, {10828, "Near Beacon Record"}, {10829, "Away Beacon Record"}, {10831, "Lost Beacon Record"},
     };
     if (const auto found = events.find(event_io); found != events.end()) return std::string(found->second);
-    if (avlTypes::types_.contains(event_io)) return std::string(avlTypes::get(event_io).name);
+    if (avl_types::types_.contains(event_io)) return std::string(avl_types::get(event_io).name);
     return "IO " + std::to_string(event_io);
 }
 
@@ -609,4 +612,5 @@ double beacon_distance_m(const int rssi, const std::optional<int> rssi_at_1m)
 {
     const double metres = std::pow(10.0, (rssi_at_1m.value_or(-59) - rssi) / 20.0);
     return std::max(0.1, std::round(metres * 10.0) / 10.0);
+}
 }

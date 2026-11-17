@@ -15,10 +15,11 @@ set(SOURCE_OBJECTS)
 set(SOURCE_LIBRARIES)
 set(SOURCE_LINK_LIBRARIES)
 
-add_sc_object(BinaryParser)
-add_sc_object(AVLType)
-add_sc_object(Codec12)
-add_sc_object(Teltonika
+# command.h and teltonika.h are the public headers; the parser, the AVL table and byte order are
+# private (src/), so they build as part of the objects that use them.
+add_sc_object(command SOURCES src/byte_order.h)
+add_sc_object(teltonika
+        SOURCES src/binary_parser.cpp src/binary_parser.h src/avl_type.cpp src/avl_type.h src/byte_order.h
         LINK_LIBRARIES sc::sc-core nlohmann_json::nlohmann_json
         PUBLIC_LINK_LIBRARIES sc::sc-core nlohmann_json::nlohmann_json)
 
@@ -34,10 +35,6 @@ if (SC_TELTONIKA_BUILD_TESTS)
     add_subdirectory(tests sc-teltonika-test)
 endif ()
 
-# 2.0.0 changed the classes' layout (each is now one pointer to a hidden implementation), so a
-# program built against 1.x would corrupt memory with this library: apt has to upgrade those
-# together with it. 1.0.29 is the first streamvms built against 2.0.
-set(CPACK_DEBIAN_RUNTIME_PACKAGE_BREAKS "streamvms (<< 1.0.29~)")
 # sc-core is built into the library, so the runtime package doesn't need simply-cpp.
 package_sc_module(
         DEV_DEPENDS "simply-cpp-dev (>= 3.0.0~)" nlohmann-json3-dev)

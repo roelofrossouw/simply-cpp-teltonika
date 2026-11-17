@@ -1,24 +1,24 @@
-#include <sc/teltonika/Codec12.h>
-#include <sc/teltonika/byte_order.h>
+#include <sc/teltonika/command.h>
+#include "byte_order.h"
 
-#include <iomanip>
-#include <iostream>
 #include <sstream>
 
 using namespace std;
 
-class Codec12::implementation {
+namespace sc::teltonika {
+
+class command::implementation {
 public:
     stringstream stream;
 };
 
-Codec12::Codec12(const string &command) : impl_(make_unique<implementation>()) {
+command::command(const string &text) : impl_(make_unique<implementation>()) {
     auto &stream = impl_->stream;
     uint32_t num = 0;
     stream.write(reinterpret_cast<char *>(&num), sizeof(num));
 
-    num = command.size() + 8;
-    num = sc::teltonika::byteswap(num);
+    num = text.size() + 8;
+    num = byteswap(num);
     stream.write(reinterpret_cast<char *>(&num), sizeof(num));
 
     uint8_t byte = 12;
@@ -30,21 +30,21 @@ Codec12::Codec12(const string &command) : impl_(make_unique<implementation>()) {
     byte = 5; // Command (6 -> response)
     stream.write(reinterpret_cast<char *>(&byte), sizeof(byte));
 
-    num = command.size();
-    num = sc::teltonika::byteswap(num);
+    num = text.size();
+    num = byteswap(num);
     stream.write(reinterpret_cast<char *>(&num), sizeof(num));
 
-    stream << command;
+    stream << text;
 
     byte = 1; // Repeat Sending 1 command
     stream.write(reinterpret_cast<char *>(&byte), sizeof(byte));
 
-    num = CalcCRC(stream.str().substr(8));
-    num = sc::teltonika::byteswap(num);
+    num = crc(stream.str().substr(8));
+    num = byteswap(num);
     stream.write(reinterpret_cast<char *>(&num), 4);
 }
 
-uint32_t Codec12::CalcCRC(const string &data) {
+uint32_t command::crc(const string &data) {
     uint32_t crc = 0;
     for (uint8_t byte: data) {
         crc ^= byte;
@@ -58,19 +58,12 @@ uint32_t Codec12::CalcCRC(const string &data) {
     return crc;
 }
 
-Codec12::~Codec12() = default;
-Codec12::Codec12(Codec12 &&) noexcept = default;
-Codec12 &Codec12::operator=(Codec12 &&) noexcept = default;
+command::~command() = default;
+command::command(command &&) noexcept = default;
+command &command::operator=(command &&) noexcept = default;
 
-std::string Codec12::Data() const {
+std::string command::bytes() const {
     return impl_->stream.str();
 }
 
-ostream &operator<<(ostream &lhs, const Codec12 &c12) {
-    stringstream ss;
-    ss << hex << uppercase;
-    for (uint8_t let: c12.impl_->stream.str())
-        ss << setw(2) << setfill('0') << static_cast<int>(let);
-    lhs << ss.str();
-    return lhs;
 }

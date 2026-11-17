@@ -1,5 +1,4 @@
 #pragma once
-#include <sc/teltonika/BinaryParser.h>
 #include <sc/core/log_level.h>
 #include <memory>
 #include <chrono>
@@ -10,15 +9,17 @@
 #include <vector>
 #include <nlohmann/json_fwd.hpp>
 
+namespace sc::teltonika {
+
 // One record's IO values: AVL ID to its value, formatted with its unit (83 -> "1234.5l"; see
-// AVLType.cpp for each ID's name, multiplier and unit). Keyed by ID because some IDs share a
+// src/avl_type.cpp for each ID's name, multiplier and unit). Keyed by ID because some IDs share a
 // name: 60 and 110 are both "Fuel Rate" (0.01 L/h and 0.1 l/h).
 using avl_record = std::map<std::uint16_t, std::string>;
-using timepoint = std::chrono::system_clock::time_point;
+using time_point = std::chrono::system_clock::time_point;
 
 // One record's position, as the device recorded it.
 struct avl_position {
-    timepoint time; // when the device recorded it, to the millisecond
+    time_point time; // when the device recorded it, to the millisecond
     double lat = 0;
     double lng = 0;
     int alt = 0;   // metres
@@ -38,9 +39,9 @@ struct avl_io_value {
 };
 
 // One record as the device sent it, nothing scaled or formatted (since 3.3.0): the IDs are kept
-// whether avlTypes knows them or not, as devices can use their own for user-defined inputs.
+// whether the AVL table knows them or not, as devices can use their own for user-defined inputs.
 struct avl_raw_record {
-    timepoint time;               // to the millisecond
+    time_point time;               // to the millisecond
     std::uint8_t priority = 0;    // 0 low, 1 high, 2 panic
     std::int32_t lng_e7 = 0;      // degrees x 10^7, signed
     std::int32_t lat_e7 = 0;
@@ -59,15 +60,15 @@ struct codec12_message {
     std::string text;
 };
 
-// What Teltonika makes of a raw record (since 3.4.0), for those that get records already parsed (by
+// What the frame makes of a raw record (since 3.4.0), for those that get records already parsed (by
 // teltonika-listener, say) and want the same as parsing the frame gives:
-// its position, as Positions() has it;
+// its position, as positions() has it;
 [[nodiscard]] avl_position to_position(const avl_raw_record& record);
-// one IO value as AVLData() has it: scaled and with its unit by its AVL type, binary ones in base64;
+// one IO value as avl_data() has it: scaled and with its unit by its AVL type, binary ones in base64;
 [[nodiscard]] std::string format_io(const avl_io_value& value);
-// the record's IO values as AVLData() has them;
+// the record's IO values as avl_data() has them;
 [[nodiscard]] avl_record to_record(const avl_raw_record& record);
-// a position as GPSInfo() gives the last one: gpstime (UTC), lat, lng, alt, ang, sat, speed; {} when
+// a position as gps() gives the last one: gpstime (UTC), lat, lng, alt, ang, sat, speed; {} when
 // its latitude is 0.
 [[nodiscard]] nlohmann::ordered_json gps_info(const avl_position& position);
 
@@ -115,59 +116,50 @@ struct ble_beacon
 // two at best.
 [[nodiscard]] double beacon_distance_m(int rssi, std::optional<int> rssi_at_1m = std::nullopt);
 
-// The record keyed by name instead (avlTypes' names). Where IDs share a name, the highest ID's
+// The record keyed by name instead (the AVL table's names). Where IDs share a name, the highest ID's
 // value is kept; unknown IDs are all "Unknown".
 [[nodiscard]] nlohmann::ordered_json avl_names(const avl_record& record);
 
-enum DataType
-{
-    Connect,
-    Ping,
-    Data,
-    Disconnect
-};
+// What frame writes to stderr: frames it can't read (a wrong length, an unknown codec, a read
+// past the end) are warnings, written at warning (the default) and above, so
+// log_level(sc::log_level::error) keeps them quiet.
+void log_level(sc::log_level level);
+[[nodiscard]] sc::log_level log_level();
 
-namespace sc::teltonika {
-    // What Teltonika writes to stderr: frames it can't read (a wrong length, an unknown codec, a
-    // read past the end) are warnings, written at warning (the default) and above, so
-    // log_level(sc::log_level::error) keeps them quiet.
-    void log_level(sc::log_level level);
-    [[nodiscard]] sc::log_level log_level();
-}
-
-class Teltonika
+// One frame a device sent, parsed: Codec 8 Extended records, or Codec 12 commands and answers.
+class frame
 {
 public:
-    explicit Teltonika(const std::string& input);
-    explicit Teltonika(const std::vector<std::uint8_t>& input);
-    ~Teltonika();
+    explicit frame(const std::string& input);
+    explicit frame(const std::vector<std::uint8_t>& input);
+    ~frame();
 
-    Teltonika(const Teltonika&) = delete;
-    Teltonika& operator=(const Teltonika&) = delete;
-    Teltonika(Teltonika&&) noexcept;
-    Teltonika& operator=(Teltonika&&) noexcept;
+    frame(const frame&) = delete;
+    frame& operator=(const frame&) = delete;
+    frame(frame&&) noexcept;
+    frame& operator=(frame&&) noexcept;
 
-    [[nodiscard]] bool IsValid() const;
+    [[nodiscard]] bool is_valid() const;
 
-    [[nodiscard]] uint8_t Items() const;
+    [[nodiscard]] std::uint8_t items() const;
 
-    [[nodiscard]] std::string CRC() const;
+    [[nodiscard]] std::string crc() const;
 
-    [[nodiscard]] nlohmann::ordered_json GPSInfo() const;
-    [[nodiscard]] std::vector<avl_record>& AVLData();
+    [[nodiscard]] nlohmann::ordered_json gps() const; // the last position as gps_info() gives it
+    [[nodiscard]] std::vector<avl_record>& avl_data();
 
     // Every record's position, in the order they were in the frame (devices send their oldest
-    // first, but buffered records can make that vary: compare the times). GPSInfo() is the last.
-    [[nodiscard]] const std::vector<avl_position>& Positions() const;
+    // first, but buffered records can make that vary: compare the times). gps() is the last.
+    [[nodiscard]] const std::vector<avl_position>& positions() const;
 
     // The frame's codec: 142 for Codec 8 Extended, 12 for Codec 12, ...; 0 when it wasn't read (a
     // bad CRC or length). Since 3.3.0.
-    [[nodiscard]] std::uint8_t Codec() const;
+    [[nodiscard]] std::uint8_t codec() const;
     // Every record as the device sent it: raw numbers, every IO by its ID (Codec 8 Extended).
     // Since 3.3.0.
-    [[nodiscard]] const std::vector<avl_raw_record>& Records() const;
+    [[nodiscard]] const std::vector<avl_raw_record>& records() const;
     // A Codec 12 frame's commands or answers. Since 3.3.0.
-    [[nodiscard]] const std::vector<codec12_message>& Messages() const;
+    [[nodiscard]] const std::vector<codec12_message>& messages() const;
 
 private:
     // Everything else lives here, so the class stays one pointer in size whatever is added: a
@@ -175,3 +167,4 @@ private:
     class implementation;
     std::unique_ptr<implementation> impl_;
 };
+}

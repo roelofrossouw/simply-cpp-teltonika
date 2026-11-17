@@ -1,6 +1,6 @@
-#include <sc/teltonika/BinaryParser.h>
-#include <sc/teltonika/Codec12.h>
-#include <sc/teltonika/Teltonika.h>
+#include "../src/binary_parser.h" // private, tested here
+#include <sc/teltonika/command.h>
+#include <sc/teltonika/teltonika.h>
 #include <sc_test.h>
 
 #include <chrono>
@@ -10,6 +10,8 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
+
+using namespace sc::teltonika;
 
 namespace {
     // Big-endian, as Teltonika sends it.
@@ -64,55 +66,55 @@ namespace {
             crc ^= byte;
             for (int i = 0; i < 8; ++i) crc = crc & 1 ? (crc >> 1) ^ 0xA001 : crc >> 1;
         }
-        std::string frame(4, '\0');
-        put<std::uint32_t>(frame, data.size());
-        frame += data;
-        put(frame, crc);
-        return frame;
+        std::string out(4, '\0');
+        put<std::uint32_t>(out, data.size());
+        out += data;
+        put(out, crc);
+        return out;
     }
 }
 
 int main() {
     SECTION("Binary parser reads big-endian values");
     const std::string bytes{"\x12\x34\x56\x78", 4};
-    BinaryParser parser{bytes, Endian::Big};
-    CHECK_EQ(parser.readUInt16(), 0x1234);
-    CHECK_EQ(parser.readUInt16(), 0x5678);
+    binary_parser parser{bytes, endian::big};
+    CHECK_EQ(parser.read_uint16(), 0x1234);
+    CHECK_EQ(parser.read_uint16(), 0x5678);
     CHECK_EQ(parser.position(), 4);
 
     SECTION("Codec 12 frames are parsed");
-    Codec12 command{"getinfo"};
-    const auto frame = command.Data();
-    Teltonika message{frame};
+    const command getinfo{"getinfo"};
+    const auto getinfo_bytes = getinfo.bytes();
+    frame message{getinfo_bytes};
 
-    CHECK_EQ(frame.substr(0, 4), std::string(4, '\0'));
-    CHECK_EQ(static_cast<unsigned char>(frame[8]), 12);
-    CHECK_EQ(message.IsValid(), true);
-    CHECK_EQ(message.Items(), 1);
-    CHECK_EQ(message.CRC(), frame.substr(frame.size() - 4));
+    CHECK_EQ(getinfo_bytes.substr(0, 4), std::string(4, '\0'));
+    CHECK_EQ(static_cast<unsigned char>(getinfo_bytes[8]), 12);
+    CHECK_EQ(message.is_valid(), true);
+    CHECK_EQ(message.items(), 1);
+    CHECK_EQ(message.crc(), getinfo_bytes.substr(getinfo_bytes.size() - 4));
 
     SECTION("Invalid frames are rejected");
-    Teltonika empty{std::string{}};
-    CHECK_EQ(empty.IsValid(), false);
-    CHECK_EQ(empty.CRC(), std::string(4, '\0'));
+    frame empty{std::string{}};
+    CHECK_EQ(empty.is_valid(), false);
+    CHECK_EQ(empty.crc(), std::string(4, '\0'));
 
-    auto corrupt = frame;
+    auto corrupt = getinfo_bytes;
     corrupt.back() ^= 1;
-    Teltonika invalid{corrupt};
-    CHECK_EQ(invalid.IsValid(), false);
+    frame invalid{corrupt};
+    CHECK_EQ(invalid.is_valid(), false);
 
     SECTION("A frame it can't read is a warning: written at warning (the default), not at error");
     {
-        auto too_long = frame;
+        auto too_long = getinfo_bytes;
         too_long += "extra"; // its length no longer matches the one it states
         std::ostringstream captured;
         auto *const previous = std::cerr.rdbuf(captured.rdbuf());
         CHECK(sc::teltonika::log_level() == sc::log_level::warning);
-        CHECK(!Teltonika{too_long}.IsValid());
+        CHECK(!frame{too_long}.is_valid());
         const auto at_warning = captured.str();
         captured.str("");
         sc::teltonika::log_level(sc::log_level::error);
-        CHECK(!Teltonika{too_long}.IsValid());
+        CHECK(!frame{too_long}.is_valid());
         const auto at_error = captured.str();
         sc::teltonika::log_level(sc::log_level::warning);
         std::cerr.rdbuf(previous);
@@ -123,38 +125,38 @@ int main() {
     SECTION("Parsers and messages move but don't copy");
     {
         // A copy would free the string's stream twice.
-        static_assert(!std::is_copy_constructible_v<BinaryParser>);
-        static_assert(!std::is_copy_constructible_v<Teltonika>);
-        static_assert(std::is_nothrow_move_constructible_v<BinaryParser>);
-        static_assert(std::is_nothrow_move_constructible_v<Teltonika>);
-        static_assert(std::is_nothrow_move_assignable_v<Teltonika>);
+        static_assert(!std::is_copy_constructible_v<binary_parser>);
+        static_assert(!std::is_copy_constructible_v<frame>);
+        static_assert(std::is_nothrow_move_constructible_v<binary_parser>);
+        static_assert(std::is_nothrow_move_constructible_v<frame>);
+        static_assert(std::is_nothrow_move_assignable_v<frame>);
         // One pointer each: what they hold can change without breaking programs built earlier.
-        static_assert(sizeof(Teltonika) == sizeof(void *));
-        static_assert(sizeof(BinaryParser) == sizeof(void *));
-        static_assert(sizeof(Codec12) == sizeof(void *));
+        static_assert(sizeof(frame) == sizeof(void *));
+        static_assert(sizeof(binary_parser) == sizeof(void *));
+        static_assert(sizeof(command) == sizeof(void *));
 
-        BinaryParser first{bytes, Endian::Big};
-        CHECK_EQ(first.readUInt16(), 0x1234);
-        BinaryParser moved{std::move(first)};
+        binary_parser first{bytes, endian::big};
+        CHECK_EQ(first.read_uint16(), 0x1234);
+        binary_parser moved{std::move(first)};
         CHECK_EQ(moved.position(), 2);           // carries on where it was
-        CHECK_EQ(moved.readUInt16(), 0x5678);
+        CHECK_EQ(moved.read_uint16(), 0x5678);
 
-        Teltonika original{frame};
-        Teltonika taken{std::move(original)};
-        CHECK_EQ(taken.IsValid(), true);
-        CHECK_EQ(taken.Items(), 1);
+        frame original{getinfo_bytes};
+        frame taken{std::move(original)};
+        CHECK_EQ(taken.is_valid(), true);
+        CHECK_EQ(taken.items(), 1);
     }
 
     SECTION("Every record's position, to the millisecond");
     {
         // The newer record first, as a device emptying its buffer may send them.
-        const Teltonika avl{codec8e_frame({
+        const frame avl{codec8e_frame({
             {1'760'000'060'250, 281234567, -259876543, 1500, 90, 9, 62},
             {1'760'000'000'000, 281200000, -259800000, 1490, 85, 0, 0},
         })};
-        CHECK(avl.IsValid());
-        CHECK_EQ(avl.Items(), 2);
-        const auto &positions = avl.Positions();
+        CHECK(avl.is_valid());
+        CHECK_EQ(avl.items(), 2);
+        const auto &positions = avl.positions();
         CHECK_EQ(positions.size(), std::size_t{2});
         if (positions.size() == 2) {
             CHECK_EQ(std::chrono::duration_cast<std::chrono::milliseconds>(positions[0].time.time_since_epoch()).count(), 1'760'000'060'250LL);
@@ -166,18 +168,18 @@ int main() {
             CHECK_EQ(positions[0].speed, 62);
             CHECK_EQ(positions[1].sat, 0); // no fix
         }
-        // GPSInfo() is still the last record in the frame.
-        CHECK_EQ(avl.GPSInfo()["sat"].get<int>(), 0);
+        // gps() is still the last record in the frame.
+        CHECK_EQ(avl.gps()["sat"].get<int>(), 0);
     }
 
     SECTION("IO values by AVL ID, so IDs sharing a name stay apart");
     {
-        Teltonika avl{codec8e_frame({
+        frame avl{codec8e_frame({
             {1'760'000'000'000, 281200000, -259800000, 1490, 85, 9, 0,
              {{60, 450}, {110, 45}}, {{83, 12345}, {107, 2500}}},
         })};
-        CHECK(avl.IsValid());
-        const auto &records = avl.AVLData();
+        CHECK(avl.is_valid());
+        const auto &records = avl.avl_data();
         CHECK_EQ(records.size(), std::size_t{1});
         if (records.size() == 1) {
             const auto &record = records[0];
@@ -197,13 +199,13 @@ int main() {
 
     SECTION("Raw records: every IO by ID with its size and bits, known or not; codec; Codec 12 texts");
     {
-        const Teltonika avl{codec8e_frame({
+        const frame avl{codec8e_frame({
             {1'760'000'060'250, 281234567, -259876543, 1500, 90, 9, 62,
              {{60, 450}, {10825, 65535}}, {{83, 12345}, {65000, 0xFFFFFFFF}}},
         })};
-        CHECK(avl.IsValid());
-        CHECK_EQ(int{avl.Codec()}, 142);
-        const auto &records = avl.Records();
+        CHECK(avl.is_valid());
+        CHECK_EQ(int{avl.codec()}, 142);
+        const auto &records = avl.records();
         CHECK_EQ(records.size(), std::size_t{1});
         if (records.size() == 1) {
             const auto &r = records[0];
@@ -225,37 +227,37 @@ int main() {
                 CHECK_EQ(r.io[3].number, std::uint64_t{0xFFFFFFFF}); // bits, unsigned
             }
         }
-        CHECK_EQ(const_cast<Teltonika &>(avl).AVLData()[0].at(60), std::string{"4.50L/h"}); // the formatted ones as before
+        CHECK_EQ(const_cast<frame &>(avl).avl_data()[0].at(60), std::string{"4.50L/h"}); // the formatted ones as before
 
-        Codec12 command{"getinfo"};
-        const Teltonika message{command.Data()};
-        CHECK_EQ(int{message.Codec()}, 12);
-        CHECK_EQ(message.Messages().size(), std::size_t{1});
-        if (!message.Messages().empty()) {
-            CHECK_EQ(int{message.Messages()[0].type}, 5);
-            CHECK_EQ(message.Messages()[0].text, std::string{"getinfo"});
+        const command getinfo{"getinfo"};
+        const frame message{getinfo.bytes()};
+        CHECK_EQ(int{message.codec()}, 12);
+        CHECK_EQ(message.messages().size(), std::size_t{1});
+        if (!message.messages().empty()) {
+            CHECK_EQ(int{message.messages()[0].type}, 5);
+            CHECK_EQ(message.messages()[0].text, std::string{"getinfo"});
         }
-        CHECK_EQ(int{Teltonika{std::string(12, '\0')}.Codec()}, 0); // not read
+        CHECK_EQ(int{frame{std::string(12, '\0')}.codec()}, 0); // not read
     }
 
     SECTION("From raw records, the same as from the frame: to_position, to_record, gps_info");
     {
-        const Teltonika avl{codec8e_frame({
+        const frame avl{codec8e_frame({
             {1'760'000'060'250, 281234567, -259876543, 1500, 90, 9, 62, {{60, 450}, {17, 0xFFF6}}, {{83, 12345}, {10825, 7}}},
             {1'760'000'000'000, 0, 0, 0, 0, 0, 0},
         })};
-        auto &formatted = const_cast<Teltonika &>(avl).AVLData();
-        CHECK_EQ(avl.Records().size(), std::size_t{2});
-        for (std::size_t i = 0; i < avl.Records().size(); ++i) {
-            CHECK(to_record(avl.Records()[i]) == formatted[i]);
-            const auto p = to_position(avl.Records()[i]);
-            CHECK(p.time == avl.Positions()[i].time && p.lat == avl.Positions()[i].lat && p.lng == avl.Positions()[i].lng &&
-                  p.alt == avl.Positions()[i].alt && p.speed == avl.Positions()[i].speed && p.sat == avl.Positions()[i].sat);
+        auto &formatted = const_cast<frame &>(avl).avl_data();
+        CHECK_EQ(avl.records().size(), std::size_t{2});
+        for (std::size_t i = 0; i < avl.records().size(); ++i) {
+            CHECK(to_record(avl.records()[i]) == formatted[i]);
+            const auto p = to_position(avl.records()[i]);
+            CHECK(p.time == avl.positions()[i].time && p.lat == avl.positions()[i].lat && p.lng == avl.positions()[i].lng &&
+                  p.alt == avl.positions()[i].alt && p.speed == avl.positions()[i].speed && p.sat == avl.positions()[i].sat);
         }
         CHECK_EQ(formatted[0].at(17), std::string{"-10mG"}); // signed (Axis X), from its raw bits
-        CHECK(gps_info(avl.Positions()[0]) == nlohmann::ordered_json(Teltonika{codec8e_frame({
-            {1'760'000'060'250, 281234567, -259876543, 1500, 90, 9, 62}})}.GPSInfo()));
-        CHECK(gps_info(avl.Positions()[1]).is_null()); // latitude 0: no fix
+        CHECK(gps_info(avl.positions()[0]) == nlohmann::ordered_json(frame{codec8e_frame({
+            {1'760'000'060'250, 281234567, -259876543, 1500, 90, 9, 62}})}.gps()));
+        CHECK(gps_info(avl.positions()[1]).is_null()); // latitude 0: no fix
     }
 
     SECTION("Event names: the triggering IOs by meaning, others by AVL name, unknown by number; priorities");
