@@ -8,7 +8,7 @@ option(SC_TELTONIKA_BUILD_TESTS "Build simply-cpp-teltonika tests" ${PROJECT_IS_
 get_sc_version()
 message(STATUS "SimplyCPP ${SC_MODULE} Version: ${SC_VERSION}")
 
-find_or_install_package(sc-core simply-cpp-dev simply-cpp 1.20.0) # log_level.h
+find_or_install_package(sc-core simply-cpp-dev simply-cpp 2.2.0) # log_level.h
 find_or_install_package(nlohmann_json nlohmann-json3-dev nlohmann-json)
 
 set(SOURCE_OBJECTS)

@@ -1,5 +1,5 @@
-#include "AVLType.h"
-#include "BinaryParser.h"
+#include <sc/teltonika/AVLType.h>
+#include <sc/teltonika/BinaryParser.h>
 #include <cmath>
 
 using namespace std;

@@ -1,5 +1,5 @@
-#include "BinaryParser.h"
-#include "byte_order.h"
+#include <sc/teltonika/BinaryParser.h>
+#include <sc/teltonika/byte_order.h>
 
 #include <sstream>
 #include <utility>

@@ -1,5 +1,5 @@
-#include "Codec12.h"
-#include "byte_order.h"
+#include <sc/teltonika/Codec12.h>
+#include <sc/teltonika/byte_order.h>
 
 #include <iomanip>
 #include <iostream>

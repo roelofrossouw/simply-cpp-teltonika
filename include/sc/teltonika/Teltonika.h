@@ -1,6 +1,6 @@
 #pragma once
-#include "BinaryParser.h"
-#include <log_level.h>
+#include <sc/teltonika/BinaryParser.h>
+#include <sc/core/log_level.h>
 #include <memory>
 #include <chrono>
 #include <cstdint>

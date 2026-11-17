@@ -4,7 +4,7 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "BinaryParser.h"
+#include <sc/teltonika/BinaryParser.h>
 
 enum class AVLType
 {

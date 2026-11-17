@@ -1,6 +1,6 @@
-#include <BinaryParser.h>
-#include <Codec12.h>
-#include <Teltonika.h>
+#include <sc/teltonika/BinaryParser.h>
+#include <sc/teltonika/Codec12.h>
+#include <sc/teltonika/Teltonika.h>
 #include <sc_test.h>
 
 #include <chrono>

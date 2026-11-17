@@ -14,7 +14,7 @@ target_link_libraries(myapp PRIVATE sc::sc-teltonika-shared)
 ```
 
 ```cpp
-#include <Teltonika.h>
+#include <sc/teltonika/Teltonika.h>
 
 Teltonika message{frame};
 if (message.IsValid()) {

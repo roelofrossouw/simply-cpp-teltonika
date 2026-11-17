@@ -1,7 +1,7 @@
-#include "Teltonika.h"
-#include "AVLType.h"
-#include "Codec12.h"
-#include "byte_order.h"
+#include <sc/teltonika/Teltonika.h>
+#include <sc/teltonika/AVLType.h>
+#include <sc/teltonika/Codec12.h>
+#include <sc/teltonika/byte_order.h>
 
 #include <algorithm>
 #include <atomic>
@@ -14,8 +14,8 @@
 #include <string_view>
 #include <unordered_map>
 #include <nlohmann/json.hpp>
-#include "base64.h"
-#include "utf8.h"
+#include <sc/core/base64.h>
+#include <sc/core/utf8.h>
 
 
 using namespace std;
